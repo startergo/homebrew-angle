@@ -85,7 +85,7 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          sudo port install gn ninja rapidjson meson pixman pkgconfig spice-protocol
+          sudo port install gn ninja rapidjson meson libpixman pkgconfig spice-protocol
 
       - name: Build ANGLE from source
         run: |
