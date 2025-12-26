@@ -13,8 +13,7 @@ class Angle < Formula
 
   bottle do
     root_url "https://github.com/startergo/homebrew-angle/releases/download/v#{version}"
-    sha256 cellar: :any_skip_relocation, arm64_sonoma: "placeholder"
-    sha256 cellar: :any_skip_relocation, x86_64_linux: "placeholder"
+    sha256 cellar: :any_skip_relocation, arm64_sonoma: "9434db2be6d2a607e223b88d7e89c9ee1e3a5cfb2e539eddd510b2b0e8d990af"
   end
 
   depends_on "gn" => :build
