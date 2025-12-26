@@ -2,12 +2,12 @@ name: Build Bottles
 
 on:
   push:
-    branches: [main]
+    branches: [master]
     paths:
       - 'Formula/**'
       - '.github/workflows/**'
   pull_request:
-    branches: [main]
+    branches: [master]
   workflow_dispatch:
     inputs:
       version:
@@ -39,7 +39,7 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
           CREATE_RELEASE="${{ github.event.inputs.release }}"
-          if [ "$CREATE_RELEASE" = "true" ] || [ "${{ github.ref }}" = "refs/heads/main" ]; then
+          if [ "$CREATE_RELEASE" = "true" ] || [ "${{ github.ref }}" = "refs/heads/master" ]; then
             echo "create_release=true" >> $GITHUB_OUTPUT
           else
             echo "create_release=false" >> $GITHUB_OUTPUT
@@ -49,8 +49,13 @@ jobs:
     needs: determine-version
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        os: [macos-13, macos-14, macos-latest]
+        include:
+          - os: macos-15-intel
+            arch: x64
+          - os: macos-latest
+            arch: arm64
     steps:
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@master
@@ -70,21 +75,27 @@ jobs:
           curl -o clean_deps.py https://raw.githubusercontent.com/startergo/build-angle/main/clean_deps.py
           chmod +x build.sh
 
+      - name: Install MacPorts
+        run: |
+          # Download and install MacPorts
+          curl -O https://distfiles.macports.org/MacPorts/MacPorts-2.10.1-24-Sonoma.pkg
+          sudo installer -pkg MacPorts-2.10.1-24-Sonoma.pkg -target /
+          # Add MacPorts to PATH for all subsequent steps
+          echo "/opt/local/bin:/opt/local/sbin" >> $GITHUB_PATH
+
       - name: Install build dependencies
         run: |
-          brew install gn ninja
+          sudo port install gn ninja rapidjson meson pixman pkgconfig spice-protocol
 
       - name: Build ANGLE from source
         run: |
-          # Build for current architecture
-          ./build.sh
+          # Build for matrix architecture
+          ./build.sh ${{ matrix.arch }}
 
       - name: Install to staging
         run: |
-          arch=$(uname -m)
-          if [ "$arch" = "x86_64" ]; then
-            arch="x64"
-          fi
+          # Use matrix architecture
+          arch="${{ matrix.arch }}"
 
           # Install to Homebrew prefix
           angle_dir="angle-$arch"
@@ -113,7 +124,7 @@ jobs:
       - name: Upload bottle artifact
         uses: actions/upload-artifact@v4
         with:
-          name: bottle-${{ matrix.os }}
+          name: bottle-${{ matrix.arch }}
           path: "*.rb"
           if-no-files-found: ignore
 
@@ -156,7 +167,7 @@ jobs:
           fi
 
           git commit -m "Update bottles for v${{ needs.determine-version.outputs.version }}" || echo "No changes to commit"
-          git push origin main || true
+          git push origin master || true
 
       - name: Create GitHub Release
         if: github.event_name == 'workflow_dispatch'
