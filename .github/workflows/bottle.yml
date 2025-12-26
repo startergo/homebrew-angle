@@ -79,7 +79,7 @@ jobs:
         run: |
           # Download and install MacPorts for macOS 15 Sequoia
           curl -L -O https://github.com/macports/macports-base/releases/download/v2.11.6/MacPorts-2.11.6-15-Sequoia.pkg
-          sudo installer -pkg MacPorts-2.11.6-15-Sequoia.pkg -target /
+          sudo installer -pkg MacPorts-2.11.6-15-Sequoia.pkg -target / -verbose
           # Add MacPorts to PATH for all subsequent steps
           echo "/opt/local/bin:/opt/local/sbin" >> $GITHUB_PATH
 
