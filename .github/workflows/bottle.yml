@@ -112,9 +112,14 @@ jobs:
           mkdir -p $(brew --prefix)/lib/pkgconfig
           cp $angle_dir/lib/pkgconfig/*.pc $(brew --prefix)/lib/pkgconfig/
 
-          # Fix pkgconfig prefix
-          sed -i.bak "s|^prefix=.*|prefix=$(brew --prefix)|" $(brew --prefix)/lib/pkgconfig/*.pc
-          rm -f $(brew --prefix)/lib/pkgconfig/*.pc.bak
+          # Fix pkgconfig prefix (only for ANGLE files, handle symlinks properly)
+          for pc in $angle_dir/lib/pkgconfig/*.pc; do
+            pc_name=$(basename "$pc")
+            pc_path="$(brew --prefix)/lib/pkgconfig/$pc_name"
+            if [ -f "$pc_path" ]; then
+              perl -pi -e "s|^prefix=.*|prefix=\$(brew --prefix)|" "$pc_path"
+            fi
+          done
 
       - name: Create bottle
         run: |
