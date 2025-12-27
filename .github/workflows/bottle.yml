@@ -121,7 +121,7 @@ jobs:
           # Update tap with local formula
           TAP_DIR="$(brew --repository)/Library/Taps/startergo/homebrew-angle"
           mkdir -p "$TAP_DIR/Formula"
-          cp Formula/angle.rb "$TAP_DIR/Formula/"
+          rsync -av Formula/angle.rb "$TAP_DIR/Formula/"
           # Build bottle from the tapped formula
           brew bottle --json startergo/angle --root-url=https://github.com/startergo/homebrew-angle/releases/download/v${{ needs.determine-version.outputs.version }}
 
