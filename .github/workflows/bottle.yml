@@ -121,6 +121,11 @@ jobs:
             fi
           done
 
+      - name: Tap local repository
+        run: |
+          # Tap the local repository so Homebrew can find the formula
+          brew tap startergo/angle "$(pwd)"
+
       - name: Create bottle
         run: |
           # Build bottle from installed files
