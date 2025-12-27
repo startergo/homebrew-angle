@@ -112,16 +112,11 @@ jobs:
             fi
           done
 
-      - name: Tap local repository
-        run: |
-          # Tap the local repository so Homebrew can find the formula
-          # Use --force to bypass remote URL validation in CI environment
-          brew tap startergo/angle "$(pwd)" --force
-
       - name: Create bottle
         run: |
-          # Build bottle from installed files
-          brew bottle startergo/angle --json --root-url=https://github.com/startergo/homebrew-angle/releases/download/v${{ needs.determine-version.outputs.version }}
+          # Build bottle directly from local formula file
+          # No need to tap - we can bottle directly from the formula path
+          brew bottle Formula/angle.rb --json --root-url=https://github.com/startergo/homebrew-angle/releases/download/v${{ needs.determine-version.outputs.version }}
 
       - name: Upload bottle artifact
         uses: actions/upload-artifact@v4
