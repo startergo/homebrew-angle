@@ -47,15 +47,9 @@ jobs:
 
   build-bottle:
     needs: determine-version
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-15-intel
-            arch: x64
-          - os: macos-latest
-            arch: arm64
+    runs-on: macos-latest
+    env:
+      ARCH: arm64
     steps:
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@master
@@ -89,16 +83,13 @@ jobs:
 
       - name: Build ANGLE from source
         run: |
-          # Build for matrix architecture
-          ./build.sh ${{ matrix.arch }}
+          # Build for ARM64
+          ./build.sh $ARCH
 
       - name: Install to staging
         run: |
-          # Use matrix architecture
-          arch="${{ matrix.arch }}"
-
           # Install to Homebrew prefix
-          angle_dir="angle-$arch"
+          angle_dir="angle-$ARCH"
 
           # Copy libraries
           mkdir -p $(brew --prefix)/lib
@@ -134,7 +125,7 @@ jobs:
       - name: Upload bottle artifact
         uses: actions/upload-artifact@v4
         with:
-          name: bottle-${{ matrix.arch }}
+          name: bottle-arm64
           path: "*.rb"
           if-no-files-found: ignore
 
