@@ -115,7 +115,8 @@ jobs:
       - name: Tap local repository
         run: |
           # Tap the local repository so Homebrew can find the formula
-          brew tap startergo/angle "$(pwd)"
+          # Use --force to bypass remote URL validation in CI environment
+          brew tap startergo/angle "$(pwd)" --force
 
       - name: Create bottle
         run: |
