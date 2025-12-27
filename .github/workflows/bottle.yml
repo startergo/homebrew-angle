@@ -69,11 +69,6 @@ jobs:
           curl -o clean_deps.py https://raw.githubusercontent.com/startergo/build-angle/main/clean_deps.py
           chmod +x build.sh
 
-      - name: Install build dependencies
-        run: |
-          # Only ninja is needed - gn is downloaded by depot_tools via bootstrap.py
-          brew install ninja
-
       - name: Build ANGLE from source
         run: |
           # Build for ARM64
