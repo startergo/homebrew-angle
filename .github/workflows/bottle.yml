@@ -107,12 +107,11 @@ jobs:
           mkdir -p "$TAP_DIR/Formula"
           cp Formula/angle.rb "$TAP_DIR/Formula/" || true
 
-          # Force local formula usage (don't use API, don't use GitHub taps)
+          # Force local formula usage (don't use API)
           export HOMEBREW_NO_INSTALL_FROM_API=1
 
-          # Build bottle using full formula path in tap directory structure
-          # Homebrew needs the formula to appear to come from a tap
-          brew bottle --json "$TAP_DIR/Formula/angle.rb" --root-url=https://github.com/startergo/homebrew-angle/releases/download/v${{ needs.determine-version.outputs.version }}
+          # Build bottle using --force-core-tap since formula isn't in a proper tap
+          brew bottle --json --force-core-tap Formula/angle.rb --root-url=https://github.com/startergo/homebrew-angle/releases/download/v${{ needs.determine-version.outputs.version }}
 
       - name: Upload bottle artifact
         uses: actions/upload-artifact@v4
