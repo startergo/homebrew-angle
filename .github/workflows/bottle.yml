@@ -79,7 +79,8 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          sudo port install gn ninja rapidjson meson libpixman pkgconfig spice-protocol
+          # Only ninja is needed - gn is downloaded by depot_tools via bootstrap.py
+          sudo port install ninja
 
       - name: Build ANGLE from source
         run: |
