@@ -7,13 +7,11 @@ class Angle < Formula
   # url "file:///Users/macbookpro/build-angle/build-angle-1.0.0.tar.gz"
   # For production with GitHub release:
   url "https://github.com/startergo/build-angle/archive/refs/tags/v1.0.0.tar.gz"
-  version "1.0.0"
-  sha256 :no_check
+  sha256 "9facfb7c61650dd4f534519b2f7fd09c98e6eaae4d5aae3ed74604c0aaa6733c"
   license "BSD-2-Clause"
 
   bottle do
     root_url "https://github.com/startergo/homebrew-angle/releases/download/v#{version}"
-    sha256 cellar: :any_skip_relocation, arm64_sonoma: "9434db2be6d2a607e223b88d7e89c9ee1e3a5cfb2e539eddd510b2b0e8d990af"
   end
 
   depends_on "gn" => :build
