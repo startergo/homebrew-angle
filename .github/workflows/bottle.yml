@@ -69,18 +69,10 @@ jobs:
           curl -o clean_deps.py https://raw.githubusercontent.com/startergo/build-angle/main/clean_deps.py
           chmod +x build.sh
 
-      - name: Install MacPorts
-        run: |
-          # Download and install MacPorts for macOS 15 Sequoia
-          curl -L -O https://github.com/macports/macports-base/releases/download/v2.11.6/MacPorts-2.11.6-15-Sequoia.pkg
-          sudo installer -pkg MacPorts-2.11.6-15-Sequoia.pkg -target / -verbose
-          # Add MacPorts to PATH for all subsequent steps
-          echo "/opt/local/bin:/opt/local/sbin" >> $GITHUB_PATH
-
       - name: Install build dependencies
         run: |
           # Only ninja is needed - gn is downloaded by depot_tools via bootstrap.py
-          sudo port install ninja
+          brew install ninja
 
       - name: Build ANGLE from source
         run: |
