@@ -119,7 +119,8 @@ jobs:
           # Force local formula usage and copy local Formula files to tap
           export HOMEBREW_NO_INSTALL_FROM_API=1
           TAP_DIR="$(brew --repository)/Library/Taps/startergo/homebrew-angle"
-          cp -R "$(pwd)/Formula"/* "$TAP_DIR/Formula/"
+          # Use rsync to copy (doesn't fail on identical files)
+          rsync -av "$(pwd)/Formula/" "$TAP_DIR/Formula/" || true
           # Build bottle
           brew bottle startergo/angle --json --root-url=https://github.com/startergo/homebrew-angle/releases/download/v${{ needs.determine-version.outputs.version }}
 
