@@ -114,9 +114,17 @@ jobs:
 
       - name: Create bottle
         run: |
-          # Build bottle directly from the local formula file
-          # The formula has a real sha256 now (stable), so it can be bottled
-          brew bottle --json Formula/angle.rb --root-url=https://github.com/startergo/homebrew-angle/releases/download/v${{ needs.determine-version.outputs.version }}
+          # Manually set up tap directory structure
+          TAP_DIR="$(brew --repository)/Library/Taps/startergo/homebrew-angle"
+          mkdir -p "$TAP_DIR/Formula"
+          cp Formula/angle.rb "$TAP_DIR/Formula/"
+
+          # Force local formula usage (don't use API, don't use GitHub taps)
+          export HOMEBREW_NO_INSTALL_FROM_API=1
+
+          # Build bottle using full formula path in tap directory structure
+          # Homebrew needs the formula to appear to come from a tap
+          brew bottle --json "$TAP_DIR/Formula/angle.rb" --root-url=https://github.com/startergo/homebrew-angle/releases/download/v${{ needs.determine-version.outputs.version }}
 
       - name: Upload bottle artifact
         uses: actions/upload-artifact@v4
