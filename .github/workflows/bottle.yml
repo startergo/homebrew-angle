@@ -123,19 +123,19 @@ jobs:
               arch = Hardware::CPU.arm? ? "arm64" : "x64"
 
               # In CI, pre-built files are in the cache directory
-              angle_dir = "\#{HOMEBREW_CACHE}/angle-\#{arch}"
+              angle_dir = "#{HOMEBREW_CACHE}/angle-#{arch}"
 
               # Copy to buildpath (where we have write permissions)
-              cp_r "\#{angle_dir}/lib", buildpath
-              cp_r "\#{angle_dir}/include", buildpath
+              cp_r "#{angle_dir}/lib", buildpath
+              cp_r "#{angle_dir}/include", buildpath
 
               # Now install from buildpath
-              lib.install Dir["\#{buildpath}/lib/*.dylib"]
-              include.install Dir["\#{buildpath}/include/*"]
-              (lib/"pkgconfig").install Dir["\#{buildpath}/lib/pkgconfig/*.pc"]
+              lib.install Dir["#{buildpath}/lib/*.dylib"]
+              include.install Dir["#{buildpath}/include/*"]
+              (lib/"pkgconfig").install Dir["#{buildpath}/lib/pkgconfig/*.pc"]
 
               inreplace Dir[lib/"pkgconfig/*.pc"] do |s|
-                s.gsub!(/^prefix=.*$/, "prefix=\#{HOMEBREW_PREFIX}")
+                s.gsub!(/^prefix=.*$/, "prefix=#{HOMEBREW_PREFIX}")
               end
             end
 
