@@ -68,6 +68,7 @@ jobs:
     env:
       ARCH: arm64
       VERSION: ${{ needs.determine-version.outputs.version }}
+      SOURCE_VERSION: 1.0.0
       ANGLE_COMMIT: ${{ needs.determine-version.outputs.angle_commit }}
     steps:
       - name: Set up Homebrew
@@ -109,13 +110,13 @@ jobs:
           class Angle < Formula
             desc "Almost Native Graphics Layer Engine (OpenGL ES implementation for macOS)"
             homepage "https://chromium.googlesource.com/angle/angle"
-            version "1.0.0"
-            url "https://github.com/startergo/build-angle/archive/refs/tags/v1.0.0.tar.gz"
+            version "$VERSION"
+            url "https://github.com/startergo/build-angle/archive/refs/tags/v$SOURCE_VERSION.tar.gz"
             sha256 "9facfb7c61650dd4f534519b2f7fd09c98e6eaae4d5aae3ed74604c0aaa6733c"
             license "BSD-2-Clause"
 
             bottle do
-              root_url "https://github.com/startergo/homebrew-angle/releases/download/v1.0.0"
+              root_url "https://github.com/startergo/homebrew-angle/releases/download/v$VERSION"
               sha256 cellar: :any, arm64_sequoia: "8ff0024a2f3b36d2f140b172302265fb110cac0df3e00edbe82bd6983f85d7c5"
             end
 
@@ -169,11 +170,22 @@ jobs:
           brew bottle --json --force-core-tap "$TAP_DIR/Formula/angle.rb" \
             --root-url=https://github.com/startergo/homebrew-angle/releases/download/v$VERSION
 
+          # Show created files
+          echo "=== Created bottle files ==="
+          ls -la *.rb *.json 2>/dev/null || echo "No files in current dir"
+
       - name: Upload bottle artifact
         uses: actions/upload-artifact@v4
         with:
           name: bottle-arm64
           path: "*.rb"
+          if-no-files-found: ignore
+
+      - name: Upload bottle JSON artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bottle-arm64
+          path: "*.json"
           if-no-files-found: ignore
 
   publish-bottles:
