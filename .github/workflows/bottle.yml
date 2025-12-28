@@ -169,10 +169,15 @@ jobs:
           export HOMEBREW_NO_INSTALL_FROM_API=1
           brew install --build-bottle "$TAP_DIR/Formula/angle.rb"
 
-          # Workaround: Pad dylib headers to ensure space for load command rewriting
-          # ANGLE's build system may not respect -headerpad_max_install_names correctly
+          # Workaround: Pre-expand dylib IDs to ensure space for bottle rewriting
+          # ANGLE's dylibs use relative IDs (./libX.dylib) which don't need much header space
+          # When Homebrew rewrites them to absolute paths for bottling, headers need more space
+          # By setting IDs to a max-length path first, we force header expansion
+          LONG_ID="/opt/homebrew/Cellar/angle/1.0.0/lib/XXXXXXXXXXXXXXXXXXXXXXXX.dylib"
           for dylib in $(brew --prefix angle)/lib/*.dylib; do
-            install_name_tool -headerpad_max_install_names "$dylib" || true
+            basename=$(basename "$dylib")
+            install_name_tool -id "$LONG_ID" "$dylib"
+            install_name_tool -id "$(brew --prefix angle)/lib/$basename" "$dylib"
           done
 
           # Create bottle from the now-installed formula
