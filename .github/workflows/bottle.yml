@@ -102,12 +102,12 @@ jobs:
             desc "Almost Native Graphics Layer Engine (OpenGL ES implementation for macOS)"
             homepage "https://chromium.googlesource.com/angle/angle"
             version "$VERSION"
-            url "https://github.com/startergo/build-angle/archive/refs/tags/v\$VERSION.tar.gz"
+            url "https://github.com/startergo/build-angle/archive/refs/tags/v${VERSION}.tar.gz"
             sha256 "9facfb7c61650dd4f534519b2f7fd09c98e6eaae4d5aae3ed74604c0aaa6733c"
             license "BSD-2-Clause"
 
             bottle do
-              root_url "https://github.com/startergo/homebrew-angle/releases/download/v\$VERSION"
+              root_url "https://github.com/startergo/homebrew-angle/releases/download/v${VERSION}"
             end
 
             def install
