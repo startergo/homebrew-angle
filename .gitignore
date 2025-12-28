@@ -1,0 +1,10 @@
+# Local build artifacts
+angle-arm64/
+
+# Local test formula
+Formula/angle_local.rb
+
+# Local build script copies
+build.sh
+clean_deps.py
+test_bottle.sh
