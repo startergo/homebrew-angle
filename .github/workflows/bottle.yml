@@ -117,7 +117,6 @@ jobs:
 
             bottle do
               root_url "https://github.com/startergo/homebrew-angle/releases/download/v$VERSION"
-              sha256 cellar: :any, arm64_sequoia: "8ff0024a2f3b36d2f140b172302265fb110cac0df3e00edbe82bd6983f85d7c5"
             end
 
             def install
@@ -154,20 +153,46 @@ jobs:
           mkdir -p "$TAP_DIR/Formula"
           cp Formula/angle.rb "$TAP_DIR/Formula/" || true  # Skip if identical (CI case)
 
-          # Force local formula usage (don't use API)
-          export HOMEBREW_NO_INSTALL_FROM_API=1
+          # Initialize tap as git repo if needed (required by Homebrew)
+          if [ ! -d "$TAP_DIR/.git" ]; then
+            cd "$TAP_DIR"
+            git init
+            git checkout -b master
+            echo "# homebrew-angle tap" > README.md
+            git add README.md
+            git commit -m "Initial commit"
+            cd -
+          fi
 
-          # Install with --build-bottle (copies pre-built files, no rebuild)
-          brew uninstall angle --force 2>/dev/null || true
-          brew install --build-bottle startergo/angle
+          # Skip brew install to avoid formula search issues
+          # Instead manually copy pre-built files to Homebrew prefix
+          HOMEBREW_PREFIX=$(brew --prefix)
 
-          # Fix dylib IDs for bottle creation
-          for dylib in $(brew --prefix)/Cellar/angle/*/lib/*.dylib; do
-            install_name_tool -id $(brew --prefix)/lib/$(basename "$dylib") "$dylib" || true
+          # Install libraries
+          mkdir -p "$HOMEBREW_PREFIX/lib"
+          cp -R angle-$ARCH/lib/*.dylib "$HOMEBREW_PREFIX/lib/"
+
+          # Install headers
+          mkdir -p "$HOMEBREW_PREFIX/include"
+          cp -R angle-$ARCH/include/* "$HOMEBREW_PREFIX/include/"
+
+          # Install pkgconfig files
+          mkdir -p "$HOMEBREW_PREFIX/lib/pkgconfig"
+          cp angle-$ARCH/lib/pkgconfig/*.pc "$HOMEBREW_PREFIX/lib/pkgconfig/"
+
+          # Fix pkgconfig prefix
+          for pc in "$HOMEBREW_PREFIX/lib/pkgconfig/"*.pc; do
+            if [ -f "$pc" ]; then
+              perl -pi -e "s|^prefix=.*|prefix=$HOMEBREW_PREFIX|" "$pc"
+            fi
           done
 
-          # Create bottle JSON
-          brew bottle --json --force-core-tap "$TAP_DIR/Formula/angle.rb" \
+          echo "Files installed to $HOMEBREW_PREFIX"
+
+          # Create bottle directly from tap formula with --force
+          # --force bypasses "not installed" check since we manually installed files
+          export HOMEBREW_NO_INSTALL_FROM_API=1
+          brew bottle --json --force-core-tap --force "$TAP_DIR/Formula/angle.rb" \
             --root-url=https://github.com/startergo/homebrew-angle/releases/download/v$VERSION
 
           # Merge JSON into formula and write .rb migration file
