@@ -1,6 +1,9 @@
 name: Build Bottles
 
 on:
+  schedule:
+    # Run every Sunday at midnight UTC
+    - cron: "0 0 * * 0"
   push:
     branches: [master]
     paths:
@@ -11,13 +14,13 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to tag (e.g., 1.0.0)'
-        required: true
-        default: '1.0.0'
+        description: 'Version to tag (e.g., 1.0.0 or 2025.12.27)'
+        required: false
+        default: ''
       release:
         description: 'Create GitHub release?'
         required: false
-        default: false
+        default: true
         type: boolean
 
 permissions:
@@ -28,18 +31,32 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
+      angle_commit: ${{ steps.angle_commit.outputs.commit }}
       create_release: ${{ steps.version.outputs.create_release }}
     steps:
+      - id: angle_commit
+        run: |
+          # Get latest ANGLE commit hash
+          COMMIT=$(git ls-remote https://chromium.googlesource.com/angle/angle HEAD | awk '{ print $1 }')
+          SHORT_COMMIT=${COMMIT:0:8}
+          echo "commit=$SHORT_COMMIT" >> $GITHUB_OUTPUT
+          echo "ANGLE commit: $SHORT_COMMIT"
+
       - id: version
         run: |
           VERSION="${{ github.event.inputs.version }}"
-          if [ -z "$VERSION" ]; then
-            VERSION="1.0.0"
-          fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
+          # For scheduled runs or if no version specified, generate date-based version
+          if [ -z "$VERSION" ]; then
+            VERSION=$(date +%Y.%m.%d)
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
+          # Create release for scheduled runs and workflow_dispatch with release=true
           CREATE_RELEASE="${{ github.event.inputs.release }}"
-          if [ "$CREATE_RELEASE" = "true" ] || [ "${{ github.ref }}" = "refs/heads/master" ]; then
+          if [ "$CREATE_RELEASE" = "true" ] || [ "${{ github.event_name }}" = "schedule" ]; then
             echo "create_release=true" >> $GITHUB_OUTPUT
           else
             echo "create_release=false" >> $GITHUB_OUTPUT
@@ -50,6 +67,8 @@ jobs:
     runs-on: macos-latest
     env:
       ARCH: arm64
+      VERSION: ${{ needs.determine-version.outputs.version }}
+      ANGLE_COMMIT: ${{ needs.determine-version.outputs.angle_commit }}
     steps:
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@master
@@ -74,44 +93,72 @@ jobs:
           # Build for ARM64
           ./build.sh $ARCH
 
-      - name: Install to staging
+      - name: Generate formula with pre-built file approach
         run: |
-          # Install to Homebrew prefix
-          angle_dir="angle-$ARCH"
+          # Generate formula that copies pre-built files to buildpath
+          # This matches the successful local approach
+          cat > Formula/angle.rb <<RUBY
+          class Angle < Formula
+            desc "Almost Native Graphics Layer Engine (OpenGL ES implementation for macOS)"
+            homepage "https://chromium.googlesource.com/angle/angle"
+            version "$VERSION"
+            url "https://github.com/startergo/build-angle/archive/refs/tags/v\$VERSION.tar.gz"
+            sha256 "9facfb7c61650dd4f534519b2f7fd09c98e6eaae4d5aae3ed74604c0aaa6733c"
+            license "BSD-2-Clause"
 
-          # Copy libraries
-          mkdir -p $(brew --prefix)/lib
-          cp -R $angle_dir/lib/*.dylib $(brew --prefix)/lib/
+            bottle do
+              root_url "https://github.com/startergo/homebrew-angle/releases/download/v\$VERSION"
+            end
 
-          # Copy headers
-          mkdir -p $(brew --prefix)/include
-          cp -R $angle_dir/include/* $(brew --prefix)/include/
+            def install
+              arch = Hardware::CPU.arm? ? "arm64" : "x64"
 
-          # Copy pkgconfig files
-          mkdir -p $(brew --prefix)/lib/pkgconfig
-          cp $angle_dir/lib/pkgconfig/*.pc $(brew --prefix)/lib/pkgconfig/
+              # Copy pre-built files from build directory to buildpath first
+              angle_dir = "\#{buildpath}/../angle-\#{arch}"
 
-          # Fix pkgconfig prefix (only for ANGLE files, handle symlinks properly)
-          for pc in $angle_dir/lib/pkgconfig/*.pc; do
-            pc_name=$(basename "$pc")
-            pc_path="$(brew --prefix)/lib/pkgconfig/$pc_name"
-            if [ -f "$pc_path" ]; then
-              perl -pi -e "s|^prefix=.*|prefix=\$(brew --prefix)|" "$pc_path"
-            fi
-          done
+              # Copy to buildpath (where we have write permissions)
+              cp_r "\#{angle_dir}/lib", buildpath
+              cp_r "\#{angle_dir}/include", buildpath
+
+              # Now install from buildpath
+              lib.install Dir["\#{buildpath}/lib/*.dylib"]
+              include.install Dir["\#{buildpath}/include/*"]
+              (lib/"pkgconfig").install Dir["\#{buildpath}/lib/pkgconfig/*.pc"]
+
+              inreplace Dir[lib/"pkgconfig/*.pc"] do |s|
+                s.gsub!(/^prefix=.*$/, "prefix=\#{HOMEBREW_PREFIX}")
+              end
+            end
+
+            test do
+              system "pkg-config", "--exists", "egl"
+              system "pkg-config", "--exists", "glesv2"
+            end
+          end
+          RUBY
 
       - name: Create bottle
         run: |
           # Manually set up tap directory structure
           TAP_DIR="$(brew --repository)/Library/Taps/startergo/homebrew-angle"
           mkdir -p "$TAP_DIR/Formula"
-          cp Formula/angle.rb "$TAP_DIR/Formula/" || true
+          cp Formula/angle.rb "$TAP_DIR/Formula/"
 
           # Force local formula usage (don't use API)
           export HOMEBREW_NO_INSTALL_FROM_API=1
 
-          # Build bottle from the tap directory path (not original Formula/angle.rb)
-          brew bottle --json --force-core-tap "$TAP_DIR/Formula/angle.rb" --root-url=https://github.com/startergo/homebrew-angle/releases/download/v${{ needs.determine-version.outputs.version }}
+          # Install with --build-bottle (copies pre-built files, no rebuild)
+          brew uninstall angle --force 2>/dev/null || true
+          brew install --build-bottle startergo/angle/angle
+
+          # Fix dylib IDs for bottle creation
+          for dylib in $(brew --prefix)/Cellar/angle/*/lib/*.dylib; do
+            install_name_tool -id $(brew --prefix)/lib/$(basename "$dylib") "$dylib" || true
+          done
+
+          # Create bottle
+          brew bottle --json --force-core-tap "$TAP_DIR/Formula/angle.rb" \
+            --root-url=https://github.com/startergo/homebrew-angle/releases/download/v$VERSION
 
       - name: Upload bottle artifact
         uses: actions/upload-artifact@v4
@@ -124,6 +171,9 @@ jobs:
     needs: [determine-version, build-bottle]
     runs-on: ubuntu-latest
     if: needs.determine-version.outputs.create_release == 'true'
+    env:
+      VERSION: ${{ needs.determine-version.outputs.version }}
+      ANGLE_COMMIT: ${{ needs.determine-version.outputs.angle_commit }}
     steps:
       - name: Checkout tap
         uses: actions/checkout@v4
@@ -134,53 +184,53 @@ jobs:
           pattern: bottle-*
           merge-multiple: true
 
-      - name: Merge bottles into formula
+      - name: Process bottles
         run: |
-          # Collect all bottle JSONs
+          # Show what we got
           ls -la *.rb *.json 2>/dev/null || true
 
-          # Update formula with bottle block (Homebrew will handle this)
-          for json in *.json; do
-            if [ -f "$json" ]; then
-              echo "Processing $json"
+          # Merge bottles into formula
+          if ls *.json 2>/dev/null; then
+            for json in *.json; do
+              echo "=== $json ==="
               cat "$json"
-            fi
-          done
+            done
+
+            # Use brew bottle --merge to update formula with bottle sha256
+            brew bottle --merge --write *.json
+
+            # Show the updated formula
+            echo "=== Updated Formula/angle.rb ==="
+            cat Formula/angle.rb || true
+          fi
 
       - name: Commit bottles to formula
         run: |
           git config user.email "actions@github.com"
           git config user.name "GitHub Actions"
 
-          # Add bottle blocks to formula (this updates the sha256 sums)
-          if ls *.json 2>/dev/null; then
-            brew bottle --merge --write --no-commit *.json || true
-            git add Formula/ || true
-          fi
-
-          git commit -m "Update bottles for v${{ needs.determine-version.outputs.version }}" || echo "No changes to commit"
+          # Commit the updated formula with bottle blocks
+          git add Formula/angle.rb || git add Formula/ || true
+          git commit -m "Update bottles for v$VERSION (ANGLE $ANGLE_COMMIT)" || echo "No changes to commit"
           git push origin master || true
 
       - name: Create GitHub Release
-        if: github.event_name == 'workflow_dispatch'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION="${{ needs.determine-version.outputs.version }}"
-
-          # Get commit info
-          COMMIT=$(git rev-parse --short HEAD)
-
-          # Create or update release
+          # Create or update release with ANGLE commit info
           gh release create "v$VERSION" \
             --title "ANGLE v$VERSION" \
-            --notes "Built from commit $COMMIT
+            --notes "Built from ANGLE commit: $ANGLE_COMMIT
 
           ### Bottles
-          $(ls *.rb | sed 's/^/- /')" \
+          $(ls *.rb 2>/dev/null | sed 's/^/- /' || echo '')" \
             --latest || true
 
           # Upload bottle files
           for rb in *.rb; do
-            gh release upload "v$VERSION" "$rb" || true
+            if [ -f "$rb" ]; then
+              echo "Uploading $rb"
+              gh release upload "v$VERSION" "$rb" || true
+            fi
           done

@@ -11,12 +11,13 @@ class Angle < Formula
   license "BSD-2-Clause"
 
   bottle do
-    root_url "https://github.com/startergo/homebrew-angle/releases/download/v#{version}"
+    root_url "https://github.com/startergo/homebrew-angle/releases/download/v1.0.0"
   end
 
-  depends_on "gn" => :build
-  depends_on "ninja" => :build
-  depends_on "python@3.12" => :build
+  # Build dependencies - commented out since we use pre-built files
+  # depends_on "gn" => :build
+  # depends_on "ninja" => :build
+  # depends_on "python@3.12" => :build
 
   # ANGLE has no stable releases, track HEAD
   head "https://chromium.googlesource.com/angle/angle",
