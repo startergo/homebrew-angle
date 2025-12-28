@@ -1,5 +1,6 @@
 # Local build artifacts
 angle-arm64/
+angle-arm64
 
 # Local test formula
 Formula/angle_local.rb
@@ -8,3 +9,6 @@ Formula/angle_local.rb
 build.sh
 clean_deps.py
 test_bottle.sh
+
+# macOS
+.DS_Store
