@@ -159,7 +159,7 @@ jobs:
 
           # Install with --build-bottle (copies pre-built files, no rebuild)
           brew uninstall angle --force 2>/dev/null || true
-          brew install --build-bottle startergo/angle/angle
+          brew install --build-bottle startergo/angle
 
           # Fix dylib IDs for bottle creation
           for dylib in $(brew --prefix)/Cellar/angle/*/lib/*.dylib; do
@@ -177,11 +177,11 @@ jobs:
           echo "=== Created bottle files ==="
           ls -la *.rb *.json 2>/dev/null || echo "No files in current dir"
 
-      - name: Upload bottle artifact
+      - name: Upload bottle tarball
         uses: actions/upload-artifact@v4
         with:
           name: bottle-arm64
-          path: "*.rb"
+          path: "*.tar.gz"
           if-no-files-found: ignore
 
       - name: Upload bottle JSON artifact
@@ -211,7 +211,7 @@ jobs:
       - name: Process bottles
         run: |
           # Show what we got
-          ls -la *.rb *.json 2>/dev/null || true
+          ls -la *.tar.gz *.json 2>/dev/null || true
 
           # Merge bottles into formula
           if ls *.json 2>/dev/null; then
@@ -248,13 +248,13 @@ jobs:
             --notes "Built from ANGLE commit: $ANGLE_COMMIT
 
           ### Bottles
-          $(ls *.rb 2>/dev/null | sed 's/^/- /' || echo '')" \
+          $(ls *.tar.gz 2>/dev/null | sed 's/^/- /' || echo '')" \
             --latest || true
 
-          # Upload bottle files
-          for rb in *.rb; do
-            if [ -f "$rb" ]; then
-              echo "Uploading $rb"
-              gh release upload "v$VERSION" "$rb" || true
+          # Upload bottle tarballs
+          for tarball in *.tar.gz; do
+            if [ -f "$tarball" ]; then
+              echo "Uploading $tarball"
+              gh release upload "v$VERSION" "$tarball" || true
             fi
           done
