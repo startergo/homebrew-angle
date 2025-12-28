@@ -164,36 +164,12 @@ jobs:
             cd -
           fi
 
-          # Skip brew install to avoid formula search issues
-          # Instead manually install to Cellar for brew bottle to find
-          HOMEBREW_PREFIX=$(brew --prefix)
-          HOMEBREW_CELLAR="$HOMEBREW_PREFIX/Cellar/angle"
-
-          # Create Cellar structure matching brew install layout
-          mkdir -p "$HOMEBREW_CELLAR/$VERSION/lib"
-          mkdir -p "$HOMEBREW_CELLAR/$VERSION/include"
-          mkdir -p "$HOMEBREW_CELLAR/$VERSION/lib/pkgconfig"
-
-          # Copy files to Cellar
-          cp angle-$ARCH/lib/*.dylib "$HOMEBREW_CELLAR/$VERSION/lib/"
-          cp -R angle-$ARCH/include/* "$HOMEBREW_CELLAR/$VERSION/include/"
-          cp angle-$ARCH/lib/pkgconfig/*.pc "$HOMEBREW_CELLAR/$VERSION/lib/pkgconfig/"
-
-          # Fix pkgconfig prefix
-          for pc in "$HOMEBREW_CELLAR/$VERSION/lib/pkgconfig/"*.pc; do
-            if [ -f "$pc" ]; then
-              perl -pi -e "s|^prefix=.*|prefix=$HOMEBREW_PREFIX|" "$pc"
-            fi
-          done
-
-          # Create .brew/angle directory with formula info for bottle to find
-          mkdir -p "$HOMEBREW_CELLAR/$VERSION/.brew/angle"
-          echo "$VERSION" > "$HOMEBREW_CELLAR/$VERSION/.brew/angle/INSTALL_RECEIPT.json"
-
-          echo "Formula installed to $HOMEBREW_CELLAR/$VERSION"
-
-          # Create bottle from tap formula (formula now exists in Cellar)
+          # Install with --build-bottle flag (required by brew bottle)
+          # The formula's install block copies from HOMEBREW_CACHE which we already set up
           export HOMEBREW_NO_INSTALL_FROM_API=1
+          brew install --build-bottle "$TAP_DIR/Formula/angle.rb"
+
+          # Create bottle from the now-installed formula
           brew bottle --json --force-core-tap "$TAP_DIR/Formula/angle.rb" \
             --root-url=https://github.com/startergo/homebrew-angle/releases/download/v$VERSION
 
