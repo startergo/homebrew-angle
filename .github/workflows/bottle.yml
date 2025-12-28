@@ -166,9 +166,12 @@ jobs:
             install_name_tool -id $(brew --prefix)/lib/$(basename "$dylib") "$dylib" || true
           done
 
-          # Create bottle
+          # Create bottle JSON
           brew bottle --json --force-core-tap "$TAP_DIR/Formula/angle.rb" \
             --root-url=https://github.com/startergo/homebrew-angle/releases/download/v$VERSION
+
+          # Merge JSON into formula and write .rb migration file
+          brew bottle --merge --write --force-core-tap *.json
 
           # Show created files
           echo "=== Created bottle files ==="
