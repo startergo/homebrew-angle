@@ -169,6 +169,12 @@ jobs:
           export HOMEBREW_NO_INSTALL_FROM_API=1
           brew install --build-bottle "$TAP_DIR/Formula/angle.rb"
 
+          # Workaround: Pad dylib headers to ensure space for load command rewriting
+          # ANGLE's build system may not respect -headerpad_max_install_names correctly
+          for dylib in $(brew --prefix angle)/lib/*.dylib; do
+            install_name_tool -headerpad_max_install_names "$dylib" || true
+          done
+
           # Create bottle from the now-installed formula
           brew bottle --json --force-core-tap "$TAP_DIR/Formula/angle.rb" \
             --root-url=https://github.com/startergo/homebrew-angle/releases/download/v$VERSION
