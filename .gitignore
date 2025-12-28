@@ -12,3 +12,6 @@ test_bottle.sh
 
 # macOS
 .DS_Store
+
+# Session documentation
+SESSION.md
