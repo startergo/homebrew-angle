@@ -12,6 +12,7 @@ class Angle < Formula
 
   bottle do
     root_url "https://github.com/startergo/homebrew-angle/releases/download/v1.0.0"
+    sha256 cellar: :any, arm64_sequoia: "8ff0024a2f3b36d2f140b172302265fb110cac0df3e00edbe82bd6983f85d7c5"
   end
 
   # Build dependencies - commented out since we use pre-built files
