@@ -36,10 +36,10 @@ jobs:
     steps:
       - id: angle_commit
         run: |
-          # Get latest ANGLE commit hash
+          # Get latest ANGLE commit hash (full 40 chars for git fetch)
           COMMIT=$(git ls-remote https://chromium.googlesource.com/angle/angle HEAD | awk '{ print $1 }')
           SHORT_COMMIT=${COMMIT:0:8}
-          echo "commit=$SHORT_COMMIT" >> $GITHUB_OUTPUT
+          echo "commit=$COMMIT" >> $GITHUB_OUTPUT
           echo "ANGLE commit: $SHORT_COMMIT"
 
       - id: version
