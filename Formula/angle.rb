@@ -18,6 +18,39 @@ class Angle < Formula
     arch = Hardware::CPU.arm? ? "arm64" : "x64"
     angle_dir = "angle-#{arch}"
 
+    # Pre-expand dylib headers when building bottles
+    # ANGLE builds with short install_name (@rpath/libX.dylib)
+    # Homebrew bottle rewrites to @@HOMEBREW_PREFIX@@/opt/angle/lib/libX.dylib
+    # This requires significant header space that must be pre-allocated
+    if build.bottle?
+      ohai "Pre-expanding dylib headers for bottle creation"
+
+      long_id = "#{HOMEBREW_PREFIX}/Cellar/angle/999.999.999/lib/#{'X' * 50}.dylib"
+      prefix = "#{HOMEBREW_PREFIX}/Cellar/angle/#{version}/lib"
+
+      Dir["#{angle_dir}/lib/*.dylib"].each do |dylib|
+        basename = File.basename(dylib)
+
+        # First expand to max length to force header allocation
+        system "install_name_tool", "-id", long_id, dylib
+        # Then set to actual path
+        system "install_name_tool", "-id", "#{prefix}/#{basename}", dylib
+
+        # Expand inter-dylib dependencies
+        Dir["#{angle_dir}/lib/*.dylib"].each do |other|
+          other_basename = File.basename(other)
+          system "install_name_tool", "-change",
+                 "@rpath/#{other_basename}",
+                 "#{prefix}/#{other_basename}",
+                 dylib
+          system "install_name_tool", "-change",
+                 "./#{other_basename}",
+                 "#{prefix}/#{other_basename}",
+                 dylib
+        end
+      end
+    end
+
     lib.install Dir["#{angle_dir}/lib/*.dylib"]
     include.install Dir["#{angle_dir}/include/*"]
     (lib/"pkgconfig").install Dir["#{angle_dir}/lib/pkgconfig/*.pc"]

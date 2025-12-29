@@ -94,98 +94,26 @@ jobs:
           # Build for ARM64
           ./build.sh $ARCH
 
-      - name: Copy built files to Homebrew cache
+      - name: Update formula version
         run: |
-          # Copy pre-built ANGLE to Homebrew cache for formula to find
-          HOMEBREW_CACHE=$(brew --cache)
-          mkdir -p "$HOMEBREW_CACHE"
-          echo "Copying angle-$ARCH to $HOMEBREW_CACHE/"
-          cp -R "angle-$ARCH" "$HOMEBREW_CACHE/"
+          # Update version and root_url in the formula
+          sed -i.bak 's/version "[^"]*"/version "$VERSION"/' Formula/angle.rb
+          sed -i.bak 's|root_url "[^"]*"|root_url "https://github.com/startergo/homebrew-angle/releases/download/v$VERSION"|' Formula/angle.rb
+          rm -f Formula/angle.rb.bak
 
-      - name: Pre-expand dylib install names for bottling
+      - name: Build bottle
         run: |
-          # Expand dylib headers BEFORE brew install so copied files already have space
-          # ANGLE builds with short install_name (@rpath/libX.dylib or ./libX.dylib)
-          # Homebrew bottle rewrites to @@HOMEBREW_PREFIX@@/opt/angle/lib/libX.dylib
-          # This requires significant header space that must be pre-allocated
-          LONG_ID="/opt/homebrew/Cellar/angle/999.999.999/lib/XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX.dylib"
-          PREFIX="/opt/homebrew/Cellar/angle/1.0.0/lib"
-
-          for dylib in angle-$ARCH/lib/*.dylib; do
-            basename=$(basename "$dylib")
-            echo "Expanding header for $basename"
-
-            # Expand dylib ID
-            install_name_tool -id "$LONG_ID" "$dylib" 2>/dev/null || true
-            install_name_tool -id "$PREFIX/$basename" "$dylib"
-
-            # Also expand inter-dylib dependencies to same long path format
-            for other in angle-$ARCH/lib/*.dylib; do
-              other_basename=$(basename "$other")
-              # Replace both @rpath and ./ references
-              install_name_tool -change "@rpath/$other_basename" "$PREFIX/$other_basename" "$dylib" 2>/dev/null || true
-              install_name_tool -change "./$other_basename" "$PREFIX/$other_basename" "$dylib" 2>/dev/null || true
-              install_name_tool -change "$other_basename" "$PREFIX/$other_basename" "$dylib" 2>/dev/null || true
-            done
-          done
-
-      - name: Generate formula with pre-built file approach
-        run: |
-          # Generate formula that copies pre-built files to buildpath
-          # This matches the successful local approach
-          cat > Formula/angle.rb <<RUBY
-          class Angle < Formula
-            desc "Almost Native Graphics Layer Engine (OpenGL ES implementation for macOS)"
-            homepage "https://chromium.googlesource.com/angle/angle"
-            version "$VERSION"
-            url "https://github.com/startergo/build-angle/archive/refs/tags/v$SOURCE_VERSION.tar.gz"
-            sha256 "9facfb7c61650dd4f534519b2f7fd09c98e6eaae4d5aae3ed74604c0aaa6733c"
-            license "BSD-2-Clause"
-
-            bottle do
-              root_url "https://github.com/startergo/homebrew-angle/releases/download/v$VERSION"
-            end
-
-            def install
-              arch = Hardware::CPU.arm? ? "arm64" : "x64"
-
-              # In CI, pre-built files are in the cache directory
-              angle_dir = "#{HOMEBREW_CACHE}/angle-#{arch}"
-
-              # Copy to buildpath (where we have write permissions)
-              cp_r "#{angle_dir}/lib", buildpath
-              cp_r "#{angle_dir}/include", buildpath
-
-              # Now install from buildpath
-              lib.install Dir["#{buildpath}/lib/*.dylib"]
-              include.install Dir["#{buildpath}/include/*"]
-              (lib/"pkgconfig").install Dir["#{buildpath}/lib/pkgconfig/*.pc"]
-
-              inreplace Dir[lib/"pkgconfig/*.pc"] do |s|
-                s.gsub!(/^prefix=.*$/, "prefix=#{HOMEBREW_PREFIX}")
-              end
-            end
-
-            test do
-              system "pkg-config", "--exists", "egl"
-              system "pkg-config", "--exists", "glesv2"
-            end
-          end
-          RUBY
-
-      - name: Create bottle
-        run: |
-          # Manually set up tap directory structure
+          # Set up tap directory
           TAP_DIR="$(brew --repository)/Library/Taps/startergo/homebrew-angle"
           mkdir -p "$TAP_DIR/Formula"
 
-          # Copy the generated formula to the tap
+          # Copy the formula to the tap
           cp Formula/angle.rb "$TAP_DIR/Formula/"
 
-          # Ensure no Casks directory exists (prevents cask detection confusion)
+          # Ensure no Casks directory exists
           rm -rf "$TAP_DIR/Casks"
 
-          # Initialize tap as git repo if needed (required by Homebrew)
+          # Initialize tap as git repo if needed
           if [ ! -d "$TAP_DIR/.git" ]; then
             cd "$TAP_DIR"
             git init
@@ -194,31 +122,22 @@ jobs:
             git add README.md Formula/angle.rb
             git commit -m "Add angle formula"
             cd -
-          else
-            # Update existing tap
-            cd "$TAP_DIR"
-            git add Formula/angle.rb || true
-            git commit -m "Update angle formula" || true
-            cd -
           fi
 
-          # Ensure HOMEBREW_NO_INSTALL_FROM_API is set for local taps
+          # Set env for local taps and uninstall any existing
           export HOMEBREW_NO_INSTALL_FROM_API=1
-
-          # Uninstall any existing angle to ensure clean install
           brew uninstall angle --force 2>/dev/null || true
 
-          # Install from tap name (not file path) to avoid cask detection issues
-          brew install --build-bottle startergo/angle/angle
+          # Install from source (formula's build.bottle? will handle pre-expansion)
+          brew install --build-from-source startergo/angle/angle
 
-          # Create bottle from the now-installed formula
+          # Create bottle
           brew bottle --json --force-core-tap "$TAP_DIR/Formula/angle.rb" \
             --root-url=https://github.com/startergo/homebrew-angle/releases/download/v$VERSION
 
-          # Merge JSON into formula and write .rb migration file
+          # Merge JSON into formula
           brew bottle --merge --write --force-core-tap *.json
 
-          # Show created files
           echo "=== Created bottle files ==="
           ls -la *.rb *.json 2>/dev/null || echo "No files in current dir"
 
