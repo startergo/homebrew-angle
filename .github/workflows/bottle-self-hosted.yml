@@ -116,7 +116,8 @@ jobs:
           export HOMEBREW_NO_INSTALL_FROM_API=1
           brew uninstall angle --force 2>/dev/null || true
 
-          brew install --build-from-source startergo/angle/angle
+          brew install --build-from-source startergo/angle/angle || true
+          brew link --overwrite angle || true
 
           brew bottle --json --force-core-tap "$TAP_DIR/Formula/angle.rb" \
             --root-url=https://github.com/startergo/homebrew-angle/releases/download/v$VERSION

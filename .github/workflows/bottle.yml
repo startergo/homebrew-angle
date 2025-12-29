@@ -129,7 +129,8 @@ jobs:
           brew uninstall angle --force 2>/dev/null || true
 
           # Install from source (formula's build.bottle? will handle pre-expansion)
-          brew install --build-from-source startergo/angle/angle
+          brew install --build-from-source startergo/angle/angle || true
+          brew link --overwrite angle || true
 
           # Create bottle
           brew bottle --json --force-core-tap "$TAP_DIR/Formula/angle.rb" \
