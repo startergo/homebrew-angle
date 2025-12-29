@@ -1,8 +1,7 @@
-name: Build Bottles
+name: Build Bottles (Self-Hosted)
 
 on:
   schedule:
-    # Run every Sunday at midnight UTC
     - cron: "0 0 * * 0"
   push:
     branches: [master]
@@ -36,7 +35,6 @@ jobs:
     steps:
       - id: angle_commit
         run: |
-          # Get latest ANGLE commit hash (full 40 chars for git fetch)
           COMMIT=$(git ls-remote https://chromium.googlesource.com/angle/angle HEAD | awk '{ print $1 }')
           SHORT_COMMIT=${COMMIT:0:8}
           echo "commit=$COMMIT" >> $GITHUB_OUTPUT
@@ -46,7 +44,6 @@ jobs:
         run: |
           VERSION="${{ github.event.inputs.version }}"
 
-          # For scheduled runs or if no version specified, generate date-based version
           if [ -z "$VERSION" ]; then
             VERSION=$(date +%Y.%m.%d)
           fi
@@ -54,7 +51,6 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Building version: $VERSION"
 
-          # Create release for scheduled runs and workflow_dispatch with release=true
           CREATE_RELEASE="${{ github.event.inputs.release }}"
           if [ "$CREATE_RELEASE" = "true" ] || [ "${{ github.event_name }}" = "schedule" ]; then
             echo "create_release=true" >> $GITHUB_OUTPUT
@@ -64,7 +60,8 @@ jobs:
 
   build-bottle:
     needs: determine-version
-    runs-on: macos-latest
+    # Use self-hosted runner
+    runs-on: self-hosted
     env:
       ARCH: arm64
       VERSION: ${{ needs.determine-version.outputs.version }}
@@ -84,36 +81,28 @@ jobs:
 
       - name: Download build scripts
         run: |
-          # Download build script and dependencies
           curl -o build.sh https://raw.githubusercontent.com/startergo/build-angle/main/build.sh
           curl -o clean_deps.py https://raw.githubusercontent.com/startergo/build-angle/main/clean_deps.py
           chmod +x build.sh
 
       - name: Build ANGLE from source
         run: |
-          # Build for ARM64
           ./build.sh $ARCH
 
       - name: Update formula version
         run: |
-          # Update version and root_url in the formula
           sed -i.bak 's/version "[^"]*"/version "$VERSION"/' Formula/angle.rb
           sed -i.bak 's|root_url "[^"]*"|root_url "https://github.com/startergo/homebrew-angle/releases/download/v$VERSION"|' Formula/angle.rb
           rm -f Formula/angle.rb.bak
 
       - name: Build bottle
         run: |
-          # Set up tap directory
           TAP_DIR="$(brew --repository)/Library/Taps/startergo/homebrew-angle"
           mkdir -p "$TAP_DIR/Formula"
 
-          # Copy the formula to the tap
           cp Formula/angle.rb "$TAP_DIR/Formula/" || true
-
-          # Ensure no Casks directory exists
           rm -rf "$TAP_DIR/Casks"
 
-          # Initialize tap as git repo if needed
           if [ ! -d "$TAP_DIR/.git" ]; then
             cd "$TAP_DIR"
             git init
@@ -124,18 +113,14 @@ jobs:
             cd -
           fi
 
-          # Set env for local taps and uninstall any existing
           export HOMEBREW_NO_INSTALL_FROM_API=1
           brew uninstall angle --force 2>/dev/null || true
 
-          # Install from source (formula's build.bottle? will handle pre-expansion)
           brew install --build-from-source startergo/angle/angle
 
-          # Create bottle
           brew bottle --json --force-core-tap "$TAP_DIR/Formula/angle.rb" \
             --root-url=https://github.com/startergo/homebrew-angle/releases/download/v$VERSION
 
-          # Merge JSON into formula
           brew bottle --merge --write --force-core-tap *.json
 
           echo "=== Created bottle files ==="
@@ -148,7 +133,7 @@ jobs:
           path: "*.tar.gz"
           if-no-files-found: ignore
 
-      - name: Upload bottle JSON artifact
+      - name: Upload bottle JSON
         uses: actions/upload-artifact@v4
         with:
           name: bottle-arm64
@@ -174,20 +159,16 @@ jobs:
 
       - name: Process bottles
         run: |
-          # Show what we got
           ls -la *.tar.gz *.json 2>/dev/null || true
 
-          # Merge bottles into formula
           if ls *.json 2>/dev/null; then
             for json in *.json; do
               echo "=== $json ==="
               cat "$json"
             done
 
-            # Use brew bottle --merge to update formula with bottle sha256
             brew bottle --merge --write *.json
 
-            # Show the updated formula
             echo "=== Updated Formula/angle.rb ==="
             cat Formula/angle.rb || true
           fi
@@ -197,7 +178,6 @@ jobs:
           git config user.email "actions@github.com"
           git config user.name "GitHub Actions"
 
-          # Commit the updated formula with bottle blocks
           git add Formula/angle.rb || git add Formula/ || true
           git commit -m "Update bottles for v$VERSION (ANGLE $ANGLE_COMMIT)" || echo "No changes to commit"
           git push origin master || true
@@ -206,7 +186,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Create or update release with ANGLE commit info
           gh release create "v$VERSION" \
             --title "ANGLE v$VERSION" \
             --notes "Built from ANGLE commit: $ANGLE_COMMIT
@@ -215,7 +194,6 @@ jobs:
           $(ls *.tar.gz 2>/dev/null | sed 's/^/- /' || echo '')" \
             --latest || true
 
-          # Upload bottle tarballs
           for tarball in *.tar.gz; do
             if [ -f "$tarball" ]; then
               echo "Uploading $tarball"
