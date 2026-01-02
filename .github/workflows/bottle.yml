@@ -166,9 +166,11 @@ jobs:
           echo "=== Files after brew bottle ==="
           ls -la
 
-          # Copy tarball to tap dir before merge (merge deletes it)
+          # Copy tarball to safe location before merge (merge deletes it)
+          # Tap dir may be a symlink to current dir, so use a temp location
           if ls *.tar.gz 2>/dev/null; then
-            cp -v *.tar.gz "$TAP_DIR/"
+            mkdir -p /tmp/bottle-artifacts
+            cp -f *.tar.gz /tmp/bottle-artifacts/ 2>/dev/null || true
           else
             echo "WARNING: No tarball files found!"
           fi
@@ -192,11 +194,10 @@ jobs:
             ls -la "$TAP_DIR"/angle*.* 2>/dev/null || echo "No angle files found"
           fi
 
-      - name: Copy bottle tarball from tap
+      - name: Copy bottle tarball from temp
         run: |
-          # Copy tarball from tap dir to workspace for upload
-          TAP_DIR="$(brew --repository)/Library/Taps/startergo/homebrew-angle"
-          cp "$TAP_DIR"/*.tar.gz . 2>/dev/null || echo "No tarball found"
+          # Copy tarball from temp location to workspace for upload
+          cp /tmp/bottle-artifacts/*.tar.gz . 2>/dev/null || echo "No tarball found"
 
       - name: Upload bottle tarball
         uses: actions/upload-artifact@v4
