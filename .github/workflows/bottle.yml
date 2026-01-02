@@ -85,42 +85,6 @@ jobs:
       - name: Checkout tap
         uses: actions/checkout@v4
 
-      - name: Create version tag
-        run: |
-          # Create and push tag BEFORE updating formula (so tarball exists)
-          git tag -f "v$VERSION" HEAD
-          git push -f origin "v$VERSION"
-          echo "Created tag: v$VERSION"
-
-      - name: Calculate new tarball checksum
-        run: |
-          # Download the new tarball and calculate SHA256
-          curl -Ls "https://github.com/startergo/homebrew-angle/archive/refs/tags/v$VERSION.tar.gz" -o angle.tar.gz
-          NEW_SHA256=$(shasum -a 256 angle.tar.gz | awk '{ print $1 }')
-          echo "NEW_SHA256=$NEW_SHA256" >> $GITHUB_ENV
-          echo "New SHA256: $NEW_SHA256"
-
-      - name: Update formula version
-        run: |
-          # Remove old bottle block
-          perl -i -0777 -pe 's/\n  bottle do.*?end\n//gs' Formula/angle.rb
-
-          # Update version, url, and sha256
-          sed -i.bak 's/version "[^"]*"/version "$VERSION"/' Formula/angle.rb
-          sed -i.bak 's|url "https://github.com/startergo/homebrew-angle/archive/refs/tags/[^"]*\.tar\.gz"|url "https://github.com/startergo/homebrew-angle/archive/refs/tags/v'$VERSION'.tar.gz"|' Formula/angle.rb
-          sed -i.bak "s/sha256 \"[^\"]*\"/sha256 \"$NEW_SHA256\"/" Formula/angle.rb
-
-          # Add bottle block using awk
-          awk '/license/ { print; print ""; print "  bottle do"; print "    root_url \"https://github.com/startergo/homebrew-angle/releases/download/v'$VERSION'\""; print "  end"; next } { print }' Formula/angle.rb > Formula/angle.rb.tmp
-          mv Formula/angle.rb.tmp Formula/angle.rb
-
-          rm -f Formula/angle.rb.bak
-
-          # Commit and push the updated formula
-          git add Formula/angle.rb
-          git commit -m "Update version to $VERSION"
-          git push origin master
-
       - name: Build bottle
         run: |
           # Set up tap directory
@@ -129,6 +93,12 @@ jobs:
 
           # Copy the formula to the tap
           cp Formula/angle.rb "$TAP_DIR/Formula/" || true
+
+          # Copy patches directory to tap (needed by build.sh)
+          if [ -d "patches" ]; then
+            cp -r patches "$TAP_DIR/"
+            echo "Copied patches directory to tap"
+          fi
 
           # Ensure no Casks directory exists
           rm -rf "$TAP_DIR/Casks"
@@ -140,6 +110,8 @@ jobs:
             git checkout -b master
             echo "# homebrew-angle tap" > README.md
             git add README.md Formula/angle.rb
+            # Add patches if they exist
+            git add patches/ 2>/dev/null || true
             git commit -m "Add angle formula"
             cd -
           fi
@@ -214,6 +186,38 @@ jobs:
           path: "*.json"
           if-no-files-found: ignore
 
+      - name: Create tag and update formula (after successful build)
+        run: |
+          # Calculate source tarball SHA256
+          TAP_DIR="$(brew --repository)/Library/Taps/startergo/homebrew-angle"
+          if [ -f "$TAP_DIR/angle-${VERSION}.tar.gz" ]; then
+            SOURCE_SHA256=$(shasum -a 256 "$TAP_DIR/angle-${VERSION}.tar.gz" | awk '{ print $1 }')
+          else
+            # Download from GitHub if not in tap dir
+            curl -Ls "https://github.com/startergo/homebrew-angle/archive/refs/tags/v${VERSION}.tar.gz" -o angle.tar.gz
+            SOURCE_SHA256=$(shasum -a 256 angle.tar.gz | awk '{ print $1 }')
+          fi
+          echo "Source SHA256: $SOURCE_SHA256"
+
+          # Update formula with new version and bottle block
+          perl -i -0777 -pe 's/\n  bottle do.*?end\n//gs' Formula/angle.rb
+          sed -i.bak 's/version "[^"]*"/version "'"$VERSION"'"/' Formula/angle.rb
+          sed -i.bak 's|url "https://github.com/startergo/homebrew-angle/archive/refs/tags/[^"]*\.tar\.gz"|url "https://github.com/startergo/homebrew-angle/archive/refs/tags/v'"$VERSION"'.tar.gz"|' Formula/angle.rb
+          sed -i.bak 's/sha256 "[^"]*"/sha256 "'"$SOURCE_SHA256"'"/' Formula/angle.rb
+          awk '/license/ { print; print ""; print "  bottle do"; print "    root_url \"https://github.com/startergo/homebrew-angle/releases/download/v'"$VERSION"'\""; print "  end"; next } { print }' Formula/angle.rb > Formula/angle.rb.tmp
+          mv Formula/angle.rb.tmp Formula/angle.rb
+          rm -f Formula/angle.rb.bak
+
+          # Commit and push formula
+          git add Formula/angle.rb
+          git commit -m "Update version to $VERSION"
+          git push origin master
+
+          # Create and push tag AFTER formula is updated
+          git tag -f "v$VERSION" HEAD
+          git push -f origin "v$VERSION"
+          echo "Created tag: v$VERSION"
+
   publish-bottles:
     needs: [determine-version, build-bottle]
     runs-on: ubuntu-latest
@@ -236,30 +240,13 @@ jobs:
           # Show what we got
           ls -la *.tar.gz *.json 2>/dev/null || true
 
-          # Merge bottles into formula
+          # Display bottle info (formula already updated in build-bottle job)
           if ls *.json 2>/dev/null; then
             for json in *.json; do
               echo "=== $json ==="
               cat "$json"
             done
-
-            # Use brew bottle --merge to update formula with bottle sha256
-            brew bottle --merge --write *.json
-
-            # Show the updated formula
-            echo "=== Updated Formula/angle.rb ==="
-            cat Formula/angle.rb || true
           fi
-
-      - name: Commit bottles to formula
-        run: |
-          git config user.email "actions@github.com"
-          git config user.name "GitHub Actions"
-
-          # Commit the updated formula with bottle blocks
-          git add Formula/angle.rb || git add Formula/ || true
-          git commit -m "Update bottles for v$VERSION (ANGLE $ANGLE_COMMIT)" || echo "No changes to commit"
-          git push origin master || true
 
       - name: Create GitHub Release
         env:
