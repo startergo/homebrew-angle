@@ -218,12 +218,21 @@ jobs:
             echo "WARNING: No patch status log found at /tmp/angle-patch-status.txt"
           fi
 
-          # SHA256 is written to GITHUB_ENV by build.sh
-          echo "SOURCE_SHA256 from GITHUB_ENV: $SOURCE_SHA256"
+          # Read SHA256 from file (build.sh writes it there since GITHUB_ENV isn't available in brew subprocess)
+          if [ -f /tmp/angle-source-sha256.txt ]; then
+            SOURCE_SHA256=$(cat /tmp/angle-source-sha256.txt)
+            echo "SOURCE_SHA256 from file: $SOURCE_SHA256"
+          else
+            echo "WARNING: SHA256 file not found at /tmp/angle-source-sha256.txt"
+          fi
+
           brew link --overwrite angle || true
           echo "=== Angle build complete ==="
           # Restore vulkan-headers for other workflows
           brew link vulkan-headers 2>/dev/null || true
+
+          # Save SHA256 for next step (workspace persists between steps)
+          echo "$SOURCE_SHA256" > source_sha256.txt
 
           # Create bottle
           brew bottle --json --force-core-tap "$TAP_DIR/Formula/angle.rb" \
@@ -281,8 +290,8 @@ jobs:
 
       - name: Create tag and push (after successful build)
         run: |
-          # SOURCE_SHA256 is available as environment variable from GITHUB_ENV
-          # (set by build.sh during the brew install)
+          # SOURCE_SHA256 was saved to file in previous step (workspace persists between steps)
+          SOURCE_SHA256=$(cat source_sha256.txt 2>/dev/null) || true
 
           if [ -z "$SOURCE_SHA256" ]; then
             echo "Error: SOURCE_SHA256 not found!"
