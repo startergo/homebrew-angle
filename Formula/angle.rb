@@ -9,9 +9,9 @@ class Angle < Formula
   license "BSD-2-Clause"
 
   bottle do
-    root_url "https://github.com/startergo/homebrew-angle/releases/download/v1.0.2"
-    rebuild 1
-    sha256 cellar: :any, arm64_sequoia: "01b9b89ea3b135e1f09a78a112a51e26760ffc90362cd26a25ce0bd4117bfdfe"
+    root_url "https://github.com/startergo/homebrew-angle/releases/download/v1.0.3"
+    rebuild 2
+    sha256 cellar: :any, arm64_sequoia: "1397807e60d921f0d419b9cb51bfff69efb16275b62cfffbd6d9152eb17e63c8"
   end
 
   head "https://chromium.googlesource.com/angle/angle",
