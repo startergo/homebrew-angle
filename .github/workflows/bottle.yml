@@ -65,6 +65,7 @@ jobs:
   build-bottle:
     needs: determine-version
     runs-on: macos-latest
+    if: needs.determine-version.outputs.create_release == 'true'
     env:
       ARCH: arm64
       VERSION: ${{ needs.determine-version.outputs.version }}
