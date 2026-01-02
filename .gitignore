@@ -2,5 +2,6 @@
 *.tar.gz
 *.json
 *.bottle.*
-angle-*
 test_bottle.sh
+angle-homebrew-bottle.patch
+angle-changes.patch
