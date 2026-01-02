@@ -84,13 +84,32 @@ jobs:
       - name: Checkout tap
         uses: actions/checkout@v4
 
+      - name: Create version tag
+        run: |
+          # Create and push tag BEFORE updating formula (so tarball exists)
+          git tag -f "v$VERSION" HEAD
+          git push -f origin "v$VERSION"
+          echo "Created tag: v$VERSION"
+
       - name: Update formula version
         run: |
-          # Update version, url, and root_url in the formula
+          # Remove old bottle block
+          perl -i -0777 -pe 's/\n  bottle do.*?end\n//gs' Formula/angle.rb
+
+          # Update version, url, and root_url
           sed -i.bak 's/version "[^"]*"/version "$VERSION"/' Formula/angle.rb
           sed -i.bak 's|url "https://github.com/startergo/homebrew-angle/archive/refs/tags/[^"]*\.tar\.gz"|url "https://github.com/startergo/homebrew-angle/archive/refs/tags/v'$VERSION'.tar.gz"|' Formula/angle.rb
-          sed -i.bak 's|root_url "[^"]*"|root_url "https://github.com/startergo/homebrew-angle/releases/download/v$VERSION"|' Formula/angle.rb
+
+          # Add bottle block using awk
+          awk '/license/ { print; print ""; print "  bottle do"; print "    root_url \"https://github.com/startergo/homebrew-angle/releases/download/v'$VERSION'\""; print "  end"; next } { print }' Formula/angle.rb > Formula/angle.rb.tmp
+          mv Formula/angle.rb.tmp Formula/angle.rb
+
           rm -f Formula/angle.rb.bak
+
+          # Commit and push the updated formula
+          git add Formula/angle.rb
+          git commit -m "Update version to $VERSION"
+          git push origin master
 
       - name: Build bottle
         run: |
