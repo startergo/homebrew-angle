@@ -143,7 +143,10 @@ jobs:
           # Install from source with --build-bottle (required for bottle creation)
           echo "=== Building angle from source... ==="
           echo "=== This will apply patches if patches/ directory exists ==="
-          brew install --build-bottle startergo/angle/angle || true
+          brew install --build-bottle startergo/angle/angle 2>&1 | tee build.log
+          # Extract SHA256 from build output (build.sh prints it)
+          SOURCE_SHA256=$(grep "^SHA256: " build.log | awk '{ print $2 }') || true
+          echo "Extracted SHA256 from build: $SOURCE_SHA256"
           brew link --overwrite angle || true
           echo "=== Angle build complete ==="
           # Restore vulkan-headers for other workflows
@@ -167,6 +170,9 @@ jobs:
 
           # Merge JSON into formula
           brew bottle --merge --write --force-core-tap *.json
+
+          # Save SHA256 for next step
+          echo "$SOURCE_SHA256" > /tmp/source_sha256.txt
 
           echo "=== Files after brew bottle --merge ==="
           ls -la
@@ -206,14 +212,12 @@ jobs:
       - name: Create tag and push (after successful build)
         run: |
           # brew bottle --merge updated bottle block, but NOT url or source sha256
-          # Need to update url and source sha256 to match VERSION
-          TAP_DIR="$(brew --repository)/Library/Taps/startergo/homebrew-angle"
-          if [ -f "$TAP_DIR/angle-${VERSION}.tar.gz" ]; then
-            SOURCE_SHA256=$(shasum -a 256 "$TAP_DIR/angle-${VERSION}.tar.gz" | awk '{ print $1 }')
-          else
-            # Download from GitHub if not in tap dir
-            curl -Ls "https://github.com/startergo/homebrew-angle/archive/refs/tags/v${VERSION}.tar.gz" -o angle.tar.gz
-            SOURCE_SHA256=$(shasum -a 256 angle.tar.gz | awk '{ print $1 }')
+          # Read SHA256 that was captured during build (build.sh prints it)
+          SOURCE_SHA256=$(cat /tmp/source_sha256.txt 2>/dev/null) || true
+
+          if [ -z "$SOURCE_SHA256" ]; then
+            echo "Error: SOURCE_SHA256 not found!"
+            exit 1
           fi
           echo "Source SHA256: $SOURCE_SHA256"
 
