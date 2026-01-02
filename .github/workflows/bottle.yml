@@ -205,8 +205,21 @@ jobs:
 
       - name: Create tag and push (after successful build)
         run: |
-          # brew bottle --merge already updated the formula with version and bottle block
-          # Just commit, tag and push
+          # brew bottle --merge updated the formula with version and bottle block
+          # Need to update source tarball sha256 (brew bottle doesn't do this)
+          TAP_DIR="$(brew --repository)/Library/Taps/startergo/homebrew-angle"
+          if [ -f "$TAP_DIR/angle-${VERSION}.tar.gz" ]; then
+            SOURCE_SHA256=$(shasum -a 256 "$TAP_DIR/angle-${VERSION}.tar.gz" | awk '{ print $1 }')
+          else
+            # Download from GitHub if not in tap dir
+            curl -Ls "https://github.com/startergo/homebrew-angle/archive/refs/tags/v${VERSION}.tar.gz" -o angle.tar.gz
+            SOURCE_SHA256=$(shasum -a 256 angle.tar.gz | awk '{ print $1 }')
+          fi
+          echo "Source SHA256: $SOURCE_SHA256"
+
+          # Update source tarball sha256 (preserving bottle block)
+          sed -i.bak 's/sha256 "[^"]*"/sha256 "'"$SOURCE_SHA256"'"/' Formula/angle.rb
+          rm -f Formula/angle.rb.bak
 
           # Commit and push formula
           git add Formula/angle.rb
