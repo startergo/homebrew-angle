@@ -143,9 +143,18 @@ jobs:
           # Install from source with --build-bottle (required for bottle creation)
           echo "=== Building angle from source... ==="
           echo "=== This will apply patches if patches/ directory exists ==="
-          brew install --build-bottle startergo/angle/angle 2>&1 | tee build.log
+          # Save to /tmp so next step can read it (same filesystem)
+          brew install --build-bottle startergo/angle/angle > /tmp/build.log 2>&1 || true
+          # Display patch application status (build.sh creates this log)
+          if [ -f /tmp/angle-patch-status.txt ]; then
+            echo "=== PATCH APPLICATION STATUS ==="
+            cat /tmp/angle-patch-status.txt
+            echo "==================================="
+          else
+            echo "WARNING: No patch status log found at /tmp/angle-patch-status.txt"
+          fi
           # Extract SHA256 from build output (build.sh prints it)
-          SOURCE_SHA256=$(grep "^SHA256: " build.log | awk '{ print $2 }') || true
+          SOURCE_SHA256=$(grep "^SHA256: " /tmp/build.log | awk '{ print $2 }') || true
           echo "Extracted SHA256 from build: $SOURCE_SHA256"
           brew link --overwrite angle || true
           echo "=== Angle build complete ==="
