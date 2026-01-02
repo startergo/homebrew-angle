@@ -49,17 +49,11 @@ jobs:
         run: |
           VERSION="${{ github.event.inputs.version }}"
 
-          # For scheduled runs or if no version specified, generate date-based version
-          # For push events, extract current version from formula
+          # If no version specified, extract current version from formula
           if [ -z "$VERSION" ]; then
-            if [ "${{ github.event_name }}" = "push" ]; then
-              # Extract version from formula url
-              VERSION=$(grep 'url.*archive/refs/tags/v' Formula/angle.rb 2>/dev/null | sed -E 's/.*v([0-9.]+)\.tar\.gz.*/\1/' || echo "1.0.0")
-              echo "Using current formula version: $VERSION"
-            else
-              VERSION=$(date +%Y.%m.%d)
-              echo "Using date-based version: $VERSION"
-            fi
+            # Extract version from formula url
+            VERSION=$(grep 'url.*archive/refs/tags/v' Formula/angle.rb 2>/dev/null | sed -E 's/.*v([0-9.]+)\.tar\.gz.*/\1/' || echo "1.0.0")
+            echo "Using current formula version: $VERSION"
           fi
 
           echo "version=$VERSION" >> $GITHUB_OUTPUT
@@ -213,8 +207,8 @@ jobs:
           # Install from source with --build-bottle (required for bottle creation)
           echo "=== Building angle from source... ==="
           echo "=== This will apply patches if patches/ directory exists ==="
-          # Save to /tmp so next step can read it (same filesystem)
-          brew install --build-bottle startergo/angle/angle > /tmp/build.log 2>&1 || true
+          brew install --build-bottle startergo/angle/angle 2>&1 || true
+
           # Display patch application status (build.sh creates this log)
           if [ -f /tmp/angle-patch-status.txt ]; then
             echo "=== PATCH APPLICATION STATUS ==="
@@ -223,9 +217,9 @@ jobs:
           else
             echo "WARNING: No patch status log found at /tmp/angle-patch-status.txt"
           fi
-          # Extract SHA256 from build output (build.sh prints it)
-          SOURCE_SHA256=$(grep "^SHA256: " /tmp/build.log | awk '{ print $2 }') || true
-          echo "Extracted SHA256 from build: $SOURCE_SHA256"
+
+          # SHA256 is written to GITHUB_ENV by build.sh
+          echo "SOURCE_SHA256 from GITHUB_ENV: $SOURCE_SHA256"
           brew link --overwrite angle || true
           echo "=== Angle build complete ==="
           # Restore vulkan-headers for other workflows
@@ -249,9 +243,6 @@ jobs:
 
           # Merge JSON into formula
           brew bottle --merge --write --force-core-tap *.json
-
-          # Save SHA256 for next step
-          echo "$SOURCE_SHA256" > /tmp/source_sha256.txt
 
           echo "=== Files after brew bottle --merge ==="
           ls -la
@@ -290,8 +281,8 @@ jobs:
 
       - name: Create tag and push (after successful build)
         run: |
-          # Read SHA256 that was captured during build (build.sh prints it)
-          SOURCE_SHA256=$(cat /tmp/source_sha256.txt 2>/dev/null) || true
+          # SOURCE_SHA256 is available as environment variable from GITHUB_ENV
+          # (set by build.sh during the brew install)
 
           if [ -z "$SOURCE_SHA256" ]; then
             echo "Error: SOURCE_SHA256 not found!"

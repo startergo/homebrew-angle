@@ -717,5 +717,10 @@ if [ -n "$GITHUB_WORKFLOW" ]; then
   if command -v shasum &> /dev/null; then
     SHA256=$(shasum -a 256 "angle-${VERSION}.tar.gz" | awk '{print $1}')
     echo "SHA256: $SHA256"
+    # Write to file for reliable capture (brew may suppress stdout)
+    echo "$SHA256" > /tmp/angle-source-sha256.txt
+    # Also write to GITHUB_ENV to make it available as environment variable
+    echo "SOURCE_SHA256=$SHA256" >> "$GITHUB_ENV"
+    echo "SHA256 written to /tmp/angle-source-sha256.txt and GITHUB_ENV"
   fi
 fi
