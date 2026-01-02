@@ -107,7 +107,7 @@ jobs:
           # Update version, url, and sha256
           sed -i.bak 's/version "[^"]*"/version "$VERSION"/' Formula/angle.rb
           sed -i.bak 's|url "https://github.com/startergo/homebrew-angle/archive/refs/tags/[^"]*\.tar\.gz"|url "https://github.com/startergo/homebrew-angle/archive/refs/tags/v'$VERSION'.tar.gz"|' Formula/angle.rb
-          sed -i.bak 's/sha256 "[^"]*"/sha256 "$NEW_SHA256"/' Formula/angle.rb
+          sed -i.bak "s/sha256 \"[^\"]*\"/sha256 \"$NEW_SHA256\"/" Formula/angle.rb
 
           # Add bottle block using awk
           awk '/license/ { print; print ""; print "  bottle do"; print "    root_url \"https://github.com/startergo/homebrew-angle/releases/download/v'$VERSION'\""; print "  end"; next } { print }' Formula/angle.rb > Formula/angle.rb.tmp
