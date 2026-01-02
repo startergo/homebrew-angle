@@ -91,13 +91,19 @@ jobs:
           TAP_DIR="$(brew --repository)/Library/Taps/startergo/homebrew-angle"
           mkdir -p "$TAP_DIR/Formula"
 
-          # Copy the formula to the tap
-          cp Formula/angle.rb "$TAP_DIR/Formula/" || true
+          # Check if tap is a symlink to current directory (GitHub Actions does this)
+          CURRENT_DIR="$(pwd)"
+          if [ -L "$TAP_DIR" ] && [ "$(readlink -f "$TAP_DIR")" = "$(readlink -f "$CURRENT_DIR")" ]; then
+            echo "Tap is symlinked to current directory, skipping copy"
+          else
+            # Copy the formula to the tap
+            cp Formula/angle.rb "$TAP_DIR/Formula/" || true
 
-          # Copy patches directory to tap (needed by build.sh)
-          if [ -d "patches" ]; then
-            cp -r patches "$TAP_DIR/"
-            echo "Copied patches directory to tap"
+            # Copy patches directory to tap (needed by build.sh)
+            if [ -d "patches" ]; then
+              cp -r patches "$TAP_DIR/"
+              echo "Copied patches directory to tap"
+            fi
           fi
 
           # Ensure no Casks directory exists
