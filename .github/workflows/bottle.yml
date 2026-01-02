@@ -163,15 +163,21 @@ jobs:
           brew bottle --json --force-core-tap "$TAP_DIR/Formula/angle.rb" \
             --root-url=https://github.com/startergo/homebrew-angle/releases/download/v$VERSION
 
+          echo "=== Files after brew bottle ==="
+          ls -la
+
           # Copy tarball to tap dir before merge (merge deletes it)
-          cp -v *.tar.gz "$TAP_DIR/" 2>/dev/null || true
+          if ls *.tar.gz 2>/dev/null; then
+            cp -v *.tar.gz "$TAP_DIR/"
+          else
+            echo "WARNING: No tarball files found!"
+          fi
 
           # Merge JSON into formula
           brew bottle --merge --write --force-core-tap *.json
 
-          echo "=== Created bottle files ==="
-          ls -la "$TAP_DIR"/*.tar.gz 2>/dev/null || echo "No tarball in tap dir"
-          ls -la *.json 2>/dev/null || echo "No json in current dir"
+          echo "=== Files after brew bottle --merge ==="
+          ls -la
 
       - name: Upload source tarball
         run: |
