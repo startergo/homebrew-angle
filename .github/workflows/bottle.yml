@@ -192,7 +192,7 @@ jobs:
       - name: Upload bottle JSON artifact
         uses: actions/upload-artifact@v4
         with:
-          name: bottle-arm64
+          name: bottle-arm64-json
           path: "*.json"
           if-no-files-found: ignore
 
