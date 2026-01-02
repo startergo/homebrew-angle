@@ -47,16 +47,25 @@ jobs:
           VERSION="${{ github.event.inputs.version }}"
 
           # For scheduled runs or if no version specified, generate date-based version
+          # For push events, extract current version from formula
           if [ -z "$VERSION" ]; then
-            VERSION=$(date +%Y.%m.%d)
+            if [ "${{ github.event_name }}" = "push" ]; then
+              # Extract version from formula url
+              VERSION=$(grep 'url.*archive/refs/tags/v' Formula/angle.rb 2>/dev/null | sed -E 's/.*v([0-9.]+)\.tar\.gz.*/\1/' || echo "1.0.0")
+              echo "Using current formula version: $VERSION"
+            else
+              VERSION=$(date +%Y.%m.%d)
+              echo "Using date-based version: $VERSION"
+            fi
           fi
 
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Building version: $VERSION"
 
           # Create release for scheduled runs and workflow_dispatch with release=true
+          # Also for push events (to update bottles)
           CREATE_RELEASE="${{ github.event.inputs.release }}"
-          if [ "$CREATE_RELEASE" = "true" ] || [ "${{ github.event_name }}" = "schedule" ]; then
+          if [ "$CREATE_RELEASE" = "true" ] || [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "push" ]; then
             echo "create_release=true" >> $GITHUB_OUTPUT
           else
             echo "create_release=false" >> $GITHUB_OUTPUT
@@ -84,6 +93,18 @@ jobs:
 
       - name: Checkout tap
         uses: actions/checkout@v4
+
+      - name: Update existing tag to current commit
+        run: |
+          # Get current version from formula (extract from url)
+          CURRENT_VERSION=$(grep 'url.*archive/refs/tags/v' Formula/angle.rb | sed -E 's/.*v([0-9.]+)\.tar\.gz.*/\1/')
+          echo "Current formula version: $CURRENT_VERSION"
+
+          # Force update the existing tag to point to current HEAD
+          # This updates the tarball at refs/tags/v$CURRENT_VERSION to contain latest code
+          git tag -f "v$CURRENT_VERSION" HEAD
+          git push -f origin "v$CURRENT_VERSION"
+          echo "Updated tag v$CURRENT_VERSION to point to commit $(git rev-parse HEAD)"
 
       - name: Build bottle
         run: |
@@ -129,6 +150,20 @@ jobs:
             cd -
           fi
 
+          # Get current version from formula (for push events, we use existing version)
+          CURRENT_VERSION=$(grep 'url.*archive/refs/tags/v' Formula/angle.rb | sed -E 's/.*v([0-9.]+)\.tar\.gz.*/\1/')
+          echo "Current formula version: $CURRENT_VERSION"
+          echo "Workflow version: $VERSION"
+
+          # For push events, use the current formula version
+          # For workflow_dispatch/schedule, use the new version
+          if [ "${{ github.event_name }}" = "push" ]; then
+            BOTTLE_VERSION="$CURRENT_VERSION"
+          else
+            BOTTLE_VERSION="$VERSION"
+          fi
+          echo "Bottle version: $BOTTLE_VERSION"
+
           # Set env for local taps and uninstall any existing
           export HOMEBREW_NO_INSTALL_FROM_API=1
           brew uninstall angle --force 2>/dev/null || true
@@ -163,7 +198,10 @@ jobs:
 
           # Create bottle
           brew bottle --json --force-core-tap "$TAP_DIR/Formula/angle.rb" \
-            --root-url=https://github.com/startergo/homebrew-angle/releases/download/v$VERSION
+            --root-url=https://github.com/startergo/homebrew-angle/releases/download/v$BOTTLE_VERSION
+
+          # Save bottle version for next step
+          echo "$BOTTLE_VERSION" > /tmp/bottle_version.txt
 
           echo "=== Files after brew bottle ==="
           ls -la
@@ -218,9 +256,8 @@ jobs:
           path: "*.json"
           if-no-files-found: ignore
 
-      - name: Create tag and push (after successful build)
+      - name: Update formula and push (after successful build)
         run: |
-          # brew bottle --merge updated bottle block, but NOT url or source sha256
           # Read SHA256 that was captured during build (build.sh prints it)
           SOURCE_SHA256=$(cat /tmp/source_sha256.txt 2>/dev/null) || true
 
@@ -230,22 +267,62 @@ jobs:
           fi
           echo "Source SHA256: $SOURCE_SHA256"
 
-          # Update url and source sha256 (before bottle block)
-          # Use awk to update url and sha256 only (not in bottle block)
-          awk -v version="$VERSION" -v new_sha256="$SOURCE_SHA256" '
-            /^  url "https:\/\/github.com\/startergo\/homebrew-angle\/archive\/refs\/tags\// {
-              print "  url \"https://github.com/startergo/homebrew-angle/archive/refs/tags/v" version ".tar.gz\""
-              next
-            }
-            /^  sha256/ && !in_bottle {
-              print "  sha256 \"" new_sha256 "\""
-              next
-            }
-            /^  bottle do/ { in_bottle=1 }
-            /^  end/ && in_bottle { in_bottle=0 }
-            { print }
-          ' Formula/angle.rb > Formula/angle.rb.tmp
-          mv Formula/angle.rb.tmp Formula/angle.rb
+          # Get current version from formula (extract from url)
+          CURRENT_VERSION=$(grep 'url.*archive/refs/tags/v' Formula/angle.rb | sed -E 's/.*v([0-9.]+)\.tar\.gz.*/\1/')
+          echo "Current formula version: $CURRENT_VERSION"
+
+          # For workflow_dispatch or schedule, we create a new version
+          # For push events, we just update the sha256 of the existing version
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "Push event: Updating existing tag $CURRENT_VERSION sha256 only"
+
+            # Get current rebuild number and increment it
+            CURRENT_REBUILD=$(grep 'rebuild' Formula/angle.rb | awk '{print $2}' || echo "0")
+            NEW_REBUILD=$((CURRENT_REBUILD + 1))
+            echo "Incrementing rebuild: $CURRENT_REBUILD -> $NEW_REBUILD"
+
+            # Update only the sha256 (not url or version), and increment rebuild
+            awk -v new_sha256="$SOURCE_SHA256" -v new_rebuild="$NEW_REBUILD" '
+              /^  sha256/ && !in_bottle {
+                print "  sha256 \"" new_sha256 "\""
+                next
+              }
+              /^    rebuild/ && in_bottle {
+                print "    rebuild " new_rebuild
+                next
+              }
+              /^  bottle do/ { in_bottle=1 }
+              /^  end/ && in_bottle { in_bottle=0 }
+              { print }
+            ' Formula/angle.rb > Formula/angle.rb.tmp
+            mv Formula/angle.rb.tmp Formula/angle.rb
+
+            COMMIT_MSG="Update $CURRENT_VERSION sha256 to $SOURCE_SHA256 (rebuild $NEW_REBUILD)"
+          else
+            echo "Workflow dispatch/schedule: Creating new version $VERSION"
+
+            # Update url and source sha256
+            awk -v version="$VERSION" -v new_sha256="$SOURCE_SHA256" '
+              /^  url "https:\/\/github.com\/startergo\/homebrew-angle\/archive\/refs\/tags\// {
+                print "  url \"https://github.com/startergo/homebrew-angle/archive/refs/tags/v" version ".tar.gz\""
+                next
+              }
+              /^  sha256/ && !in_bottle {
+                print "  sha256 \"" new_sha256 "\""
+                next
+              }
+              /^  bottle do/ { in_bottle=1 }
+              /^  end/ && in_bottle { in_bottle=0 }
+              { print }
+            ' Formula/angle.rb > Formula/angle.rb.tmp
+            mv Formula/angle.rb.tmp Formula/angle.rb
+
+            # Create and push new tag
+            git tag "v$VERSION" HEAD
+            git push origin "v$VERSION"
+            echo "Created tag: v$VERSION"
+            COMMIT_MSG="Update version to $VERSION"
+          fi
 
           # Show the updated formula for verification
           echo "=== Updated formula ==="
@@ -253,13 +330,8 @@ jobs:
 
           # Commit and push formula
           git add Formula/angle.rb
-          git commit -m "Update version to $VERSION"
+          git commit -m "$COMMIT_MSG"
           git push origin master
-
-          # Create and push tag AFTER formula is updated
-          git tag -f "v$VERSION" HEAD
-          git push -f origin "v$VERSION"
-          echo "Created tag: v$VERSION"
 
   publish-bottles:
     needs: [determine-version, build-bottle]
