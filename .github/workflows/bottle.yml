@@ -147,6 +147,9 @@ jobs:
           export HOMEBREW_NO_INSTALL_FROM_API=1
           brew uninstall angle --force 2>/dev/null || true
 
+          # Install gn from source (no bottle available)
+          brew install startergo/gn/gn --build-from-source || true
+
           # Unlink conflicting packages
           brew unlink vulkan-headers 2>/dev/null || true
 
