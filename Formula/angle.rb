@@ -3,7 +3,6 @@ class Angle < Formula
   homepage "https://chromium.googlesource.com/angle/angle"
   depends_on "startergo/gn/gn" => :build
   depends_on "ninja" => :build
-  depends_on "vulkan-headers" => :build
   depends_on "llvm" => :build
   url "https://github.com/startergo/homebrew-angle/archive/refs/tags/v1.0.0.tar.gz"
   sha256 "c4f5b0e4d9d0ad90ec0b59a134015eaac50f7d165b8ff7a0f04c01350117aa60"
