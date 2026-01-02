@@ -1,15 +1,6 @@
 name: Build Bottles (Self-Hosted)
 
 on:
-  schedule:
-    - cron: "0 0 * * 0"
-  push:
-    branches: [master]
-    paths:
-      - 'Formula/**'
-      - '.github/workflows/**'
-  pull_request:
-    branches: [master]
   workflow_dispatch:
     inputs:
       version:
@@ -85,10 +76,6 @@ jobs:
           curl -o clean_deps.py https://raw.githubusercontent.com/startergo/build-angle/main/clean_deps.py
           chmod +x build.sh
 
-      - name: Build ANGLE from source
-        run: |
-          ./build.sh $ARCH
-
       - name: Update formula version
         run: |
           sed -i.bak 's/version "[^"]*"/version "$VERSION"/' Formula/angle.rb
@@ -113,11 +100,18 @@ jobs:
             cd -
           fi
 
+          # Set env for local taps and uninstall any existing
           export HOMEBREW_NO_INSTALL_FROM_API=1
           brew uninstall angle --force 2>/dev/null || true
 
-          brew install --build-from-source startergo/angle/angle || true
+          # Unlink conflicting packages
+          brew unlink vulkan-headers 2>/dev/null || true
+
+          # Install from source with --build-bottle (required for bottle creation)
+          brew install --build-bottle startergo/angle/angle || true
           brew link --overwrite angle || true
+          # Restore vulkan-headers for other workflows
+          brew link vulkan-headers 2>/dev/null || true
 
           brew bottle --json --force-core-tap "$TAP_DIR/Formula/angle.rb" \
             --root-url=https://github.com/startergo/homebrew-angle/releases/download/v$VERSION

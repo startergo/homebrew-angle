@@ -68,8 +68,10 @@ jobs:
     env:
       ARCH: arm64
       VERSION: ${{ needs.determine-version.outputs.version }}
+      BUILD_DATE: ${{ needs.determine-version.outputs.version }}
       SOURCE_VERSION: 1.0.0
       ANGLE_COMMIT: ${{ needs.determine-version.outputs.angle_commit }}
+      GITHUB_WORKFLOW: "1"
     steps:
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@master
@@ -82,22 +84,11 @@ jobs:
       - name: Checkout tap
         uses: actions/checkout@v4
 
-      - name: Download build scripts
-        run: |
-          # Download build script and dependencies
-          curl -o build.sh https://raw.githubusercontent.com/startergo/build-angle/main/build.sh
-          curl -o clean_deps.py https://raw.githubusercontent.com/startergo/build-angle/main/clean_deps.py
-          chmod +x build.sh
-
-      - name: Build ANGLE from source
-        run: |
-          # Build for ARM64
-          ./build.sh $ARCH
-
       - name: Update formula version
         run: |
-          # Update version and root_url in the formula
+          # Update version, url, and root_url in the formula
           sed -i.bak 's/version "[^"]*"/version "$VERSION"/' Formula/angle.rb
+          sed -i.bak 's|url "https://github.com/startergo/homebrew-angle/archive/refs/tags/[^"]*\.tar\.gz"|url "https://github.com/startergo/homebrew-angle/archive/refs/tags/v'$VERSION'.tar.gz"|' Formula/angle.rb
           sed -i.bak 's|root_url "[^"]*"|root_url "https://github.com/startergo/homebrew-angle/releases/download/v$VERSION"|' Formula/angle.rb
           rm -f Formula/angle.rb.bak
 
@@ -128,9 +119,14 @@ jobs:
           export HOMEBREW_NO_INSTALL_FROM_API=1
           brew uninstall angle --force 2>/dev/null || true
 
-          # Install from source (formula's build.bottle? will handle pre-expansion)
-          brew install --build-from-source startergo/angle/angle || true
+          # Unlink conflicting packages
+          brew unlink vulkan-headers 2>/dev/null || true
+
+          # Install from source with --build-bottle (required for bottle creation)
+          brew install --build-bottle startergo/angle/angle || true
           brew link --overwrite angle || true
+          # Restore vulkan-headers for other workflows
+          brew link vulkan-headers 2>/dev/null || true
 
           # Create bottle
           brew bottle --json --force-core-tap "$TAP_DIR/Formula/angle.rb" \
@@ -141,6 +137,19 @@ jobs:
 
           echo "=== Created bottle files ==="
           ls -la *.rb *.json 2>/dev/null || echo "No files in current dir"
+
+      - name: Upload source tarball
+        run: |
+          # Copy source tarball from tap directory
+          TAP_DIR="$(brew --repository)/Library/Taps/startergo/homebrew-angle"
+          if [ -f "$TAP_DIR/angle-${VERSION}.tar.gz" ]; then
+            cp "$TAP_DIR/angle-${VERSION}.tar.gz" .
+            echo "Found source tarball: angle-${VERSION}.tar.gz"
+            shasum -a 256 "angle-${VERSION}.tar.gz"
+          else
+            echo "Warning: Source tarball not found at $TAP_DIR/angle-${VERSION}.tar.gz"
+            ls -la "$TAP_DIR"/angle*.* 2>/dev/null || echo "No angle files found"
+          fi
 
       - name: Upload bottle tarball
         uses: actions/upload-artifact@v4

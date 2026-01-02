@@ -1,8 +1,12 @@
 class Angle < Formula
   desc "Almost Native Graphics Layer Engine (OpenGL ES implementation for macOS)"
   homepage "https://chromium.googlesource.com/angle/angle"
-  url "https://github.com/startergo/build-angle/archive/refs/tags/v1.0.0.tar.gz"
-  sha256 "9facfb7c61650dd4f534519b2f7fd09c98e6eaae4d5aae3ed74604c0aaa6733c"
+  depends_on "startergo/gn/gn" => :build
+  depends_on "ninja" => :build
+  depends_on "vulkan-headers" => :build
+  depends_on "llvm" => :build
+  url "https://github.com/startergo/homebrew-angle/archive/refs/tags/v1.0.0.tar.gz"
+  sha256 "c76093d83679d1ffe16f4e5d64e10955b648cbe77480a29a3a6e6334aede1808"
   license "BSD-2-Clause"
 
   head "https://chromium.googlesource.com/angle/angle",
@@ -13,45 +17,19 @@ class Angle < Formula
   end
 
   def install
-    system "./build.sh", Hardware::CPU.arm? ? "arm64" : "x64"
-
     arch = Hardware::CPU.arm? ? "arm64" : "x64"
     angle_dir = "angle-#{arch}"
 
-    # Pre-expand dylib headers when building bottles
-    # ANGLE builds with short install_name (@rpath/libX.dylib)
-    # Homebrew bottle rewrites to @@HOMEBREW_PREFIX@@/opt/angle/lib/libX.dylib
-    # This requires significant header space that must be pre-allocated
-    if build.bottle?
-      ohai "Pre-expanding dylib headers for bottle creation"
+    # Install_name configs are handled by angle-homebrew-bottle.patch
+    # The patch adds each config to its respective library target only
 
-      long_id = "#{HOMEBREW_PREFIX}/Cellar/angle/999.999.999/lib/#{'X' * 50}.dylib"
-      prefix = "#{HOMEBREW_PREFIX}/Cellar/angle/#{version}/lib"
+    system "./build.sh", arch
 
-      Dir["#{angle_dir}/lib/*.dylib"].each do |dylib|
-        basename = File.basename(dylib)
+    # Copy dylibs directly to preserve install_name set during build
+    # lib.install would rewrite to keg-only path, losing the header padding
+    mkdir_p lib
+    system "cp", "-R", "#{angle_dir}/lib/.", lib.to_s
 
-        # First expand to max length to force header allocation
-        system "install_name_tool", "-id", long_id, dylib
-        # Then set to actual path
-        system "install_name_tool", "-id", "#{prefix}/#{basename}", dylib
-
-        # Expand inter-dylib dependencies
-        Dir["#{angle_dir}/lib/*.dylib"].each do |other|
-          other_basename = File.basename(other)
-          system "install_name_tool", "-change",
-                 "@rpath/#{other_basename}",
-                 "#{prefix}/#{other_basename}",
-                 dylib
-          system "install_name_tool", "-change",
-                 "./#{other_basename}",
-                 "#{prefix}/#{other_basename}",
-                 dylib
-        end
-      end
-    end
-
-    lib.install Dir["#{angle_dir}/lib/*.dylib"]
     include.install Dir["#{angle_dir}/include/*"]
     (lib/"pkgconfig").install Dir["#{angle_dir}/lib/pkgconfig/*.pc"]
 
