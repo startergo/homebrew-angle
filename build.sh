@@ -126,18 +126,32 @@ git -C angle checkout --force FETCH_HEAD || exit 1
 
 # Apply ANGLE bug fix patches
 PATCH_DIR="$(dirname "$0")/patches"
+echo "=== Looking for patches in: $PATCH_DIR ===" >&2
+if [ -d "$PATCH_DIR" ]; then
+  echo "=== Patches directory found ===" >&2
+  ls -la "$PATCH_DIR/" >&2
+else
+  echo "=== Patches directory NOT found ===" >&2
+fi
+
 if [ -f "$PATCH_DIR/angle-changes-main.patch" ]; then
   echo "=== Applying ANGLE bug fix patches ===" >&2
+  echo "=== Patch file: $PATCH_DIR/angle-changes-main.patch ===" >&2
   if git -C angle apply --check "$PATCH_DIR/angle-changes-main.patch" 2>/dev/null; then
     git -C angle apply "$PATCH_DIR/angle-changes-main.patch" || {
       echo "Warning: Failed to apply patches" >&2
       exit 1
     }
     echo "=== Patches applied successfully ===" >&2
+    # Show what was patched
+    echo "=== Files patched: ===" >&2
+    git -C angle diff --stat >&2
   else
     echo "Warning: Patch does not apply cleanly to this ANGLE version" >&2
     echo "Continuing without patches..." >&2
   fi
+else
+  echo "=== No angle-changes-main.patch found, skipping patches ===" >&2
 fi
 
 # Now cd into angle for the rest of the build

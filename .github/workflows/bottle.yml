@@ -87,22 +87,29 @@ jobs:
 
       - name: Build bottle
         run: |
+          set -x
           # Set up tap directory
           TAP_DIR="$(brew --repository)/Library/Taps/startergo/homebrew-angle"
+          echo "=== TAP_DIR: $TAP_DIR ==="
           mkdir -p "$TAP_DIR/Formula"
 
           # Check if tap is a symlink to current directory (GitHub Actions does this)
           CURRENT_DIR="$(pwd)"
+          echo "=== CURRENT_DIR: $CURRENT_DIR ==="
           if [ -L "$TAP_DIR" ] && [ "$(readlink -f "$TAP_DIR")" = "$(readlink -f "$CURRENT_DIR")" ]; then
             echo "Tap is symlinked to current directory, skipping copy"
           else
             # Copy the formula to the tap
+            echo "Copying formula to tap..."
             cp Formula/angle.rb "$TAP_DIR/Formula/" || true
 
             # Copy patches directory to tap (needed by build.sh)
             if [ -d "patches" ]; then
+              echo "Copying patches directory to tap..."
               cp -r patches "$TAP_DIR/"
               echo "Copied patches directory to tap"
+              ls -la patches/
+              ls -la "$TAP_DIR/patches/"
             fi
           fi
 
@@ -127,14 +134,18 @@ jobs:
           brew uninstall angle --force 2>/dev/null || true
 
           # Install gn from source (no bottle available)
+          echo "=== Installing gn... ==="
           brew install startergo/gn/gn --build-from-source || true
 
           # Unlink conflicting packages
           brew unlink vulkan-headers 2>/dev/null || true
 
           # Install from source with --build-bottle (required for bottle creation)
+          echo "=== Building angle from source... ==="
+          echo "=== This will apply patches if patches/ directory exists ==="
           brew install --build-bottle startergo/angle/angle || true
           brew link --overwrite angle || true
+          echo "=== Angle build complete ==="
           # Restore vulkan-headers for other workflows
           brew link vulkan-headers 2>/dev/null || true
 
@@ -192,27 +203,10 @@ jobs:
           path: "*.json"
           if-no-files-found: ignore
 
-      - name: Create tag and update formula (after successful build)
+      - name: Create tag and push (after successful build)
         run: |
-          # Calculate source tarball SHA256
-          TAP_DIR="$(brew --repository)/Library/Taps/startergo/homebrew-angle"
-          if [ -f "$TAP_DIR/angle-${VERSION}.tar.gz" ]; then
-            SOURCE_SHA256=$(shasum -a 256 "$TAP_DIR/angle-${VERSION}.tar.gz" | awk '{ print $1 }')
-          else
-            # Download from GitHub if not in tap dir
-            curl -Ls "https://github.com/startergo/homebrew-angle/archive/refs/tags/v${VERSION}.tar.gz" -o angle.tar.gz
-            SOURCE_SHA256=$(shasum -a 256 angle.tar.gz | awk '{ print $1 }')
-          fi
-          echo "Source SHA256: $SOURCE_SHA256"
-
-          # Update formula with new version and bottle block
-          perl -i -0777 -pe 's/\n  bottle do.*?end\n//gs' Formula/angle.rb
-          sed -i.bak 's/version "[^"]*"/version "'"$VERSION"'"/' Formula/angle.rb
-          sed -i.bak 's|url "https://github.com/startergo/homebrew-angle/archive/refs/tags/[^"]*\.tar\.gz"|url "https://github.com/startergo/homebrew-angle/archive/refs/tags/v'"$VERSION"'.tar.gz"|' Formula/angle.rb
-          sed -i.bak 's/sha256 "[^"]*"/sha256 "'"$SOURCE_SHA256"'"/' Formula/angle.rb
-          awk '/license/ { print; print ""; print "  bottle do"; print "    root_url \"https://github.com/startergo/homebrew-angle/releases/download/v'"$VERSION"'\""; print "  end"; next } { print }' Formula/angle.rb > Formula/angle.rb.tmp
-          mv Formula/angle.rb.tmp Formula/angle.rb
-          rm -f Formula/angle.rb.bak
+          # brew bottle --merge already updated the formula with version and bottle block
+          # Just commit, tag and push
 
           # Commit and push formula
           git add Formula/angle.rb
