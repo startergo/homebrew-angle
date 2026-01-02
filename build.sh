@@ -126,33 +126,35 @@ git -C angle checkout --force FETCH_HEAD || exit 1
 
 # Apply ANGLE bug fix patches
 PATCH_DIR="$(dirname "$0")/patches"
-echo "=== Looking for patches in: $PATCH_DIR ==="
+echo "========================================" >&2
+echo "=== Looking for patches in: $PATCH_DIR ===" >&2
 if [ -d "$PATCH_DIR" ]; then
-  echo "=== Patches directory found ==="
-  ls -la "$PATCH_DIR/"
+  echo "=== Patches directory FOUND ===" >&2
+  ls -la "$PATCH_DIR/" >&2
 else
-  echo "=== Patches directory NOT found ==="
+  echo "=== Patches directory NOT FOUND ===" >&2
 fi
 
 if [ -f "$PATCH_DIR/angle-changes-main.patch" ]; then
-  echo "=== Applying ANGLE bug fix patches ==="
-  echo "=== Patch file: $PATCH_DIR/angle-changes-main.patch ==="
+  echo "=== PATCH FILE FOUND! Applying... ===" >&2
+  echo "=== Patch file: $PATCH_DIR/angle-changes-main.patch ===" >&2
   if git -C angle apply --check "$PATCH_DIR/angle-changes-main.patch" 2>/dev/null; then
     git -C angle apply "$PATCH_DIR/angle-changes-main.patch" || {
-      echo "Warning: Failed to apply patches"
+      echo "=== ERROR: Failed to apply patches ===" >&2
       exit 1
     }
-    echo "=== Patches applied successfully ==="
+    echo "=== PATCHES APPLIED SUCCESSFULLY ===" >&2
     # Show what was patched
-    echo "=== Files patched: ==="
-    git -C angle diff --stat
+    echo "=== Files patched: ===" >&2
+    git -C angle diff --stat >&2
   else
-    echo "Warning: Patch does not apply cleanly to this ANGLE version"
-    echo "Continuing without patches..."
+    echo "=== WARNING: Patch does not apply cleanly ===" >&2
+    echo "=== Continuing without patches ===" >&2
   fi
 else
-  echo "=== No angle-changes-main.patch found, skipping patches ==="
+  echo "=== NO PATCH FILE FOUND - skipping ===" >&2
 fi
+echo "========================================" >&2
 
 # Now cd into angle for the rest of the build
 cd angle
