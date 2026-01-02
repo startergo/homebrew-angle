@@ -6,7 +6,7 @@ class Angle < Formula
   depends_on "vulkan-headers" => :build
   depends_on "llvm" => :build
   url "https://github.com/startergo/homebrew-angle/archive/refs/tags/v1.0.0.tar.gz"
-  sha256 "c76093d83679d1ffe16f4e5d64e10955b648cbe77480a29a3a6e6334aede1808"
+  sha256 "a025f754a90a0635339970a1924a3392a00115e338d3bdb94bc9792f9d11c293"
   license "BSD-2-Clause"
 
   head "https://chromium.googlesource.com/angle/angle",
