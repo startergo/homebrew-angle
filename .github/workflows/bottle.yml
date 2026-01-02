@@ -163,11 +163,15 @@ jobs:
           brew bottle --json --force-core-tap "$TAP_DIR/Formula/angle.rb" \
             --root-url=https://github.com/startergo/homebrew-angle/releases/download/v$VERSION
 
+          # Copy tarball to tap dir before merge (merge deletes it)
+          cp -v *.tar.gz "$TAP_DIR/" 2>/dev/null || true
+
           # Merge JSON into formula
           brew bottle --merge --write --force-core-tap *.json
 
           echo "=== Created bottle files ==="
-          ls -la *.rb *.json 2>/dev/null || echo "No files in current dir"
+          ls -la "$TAP_DIR"/*.tar.gz 2>/dev/null || echo "No tarball in tap dir"
+          ls -la *.json 2>/dev/null || echo "No json in current dir"
 
       - name: Upload source tarball
         run: |
@@ -181,6 +185,12 @@ jobs:
             echo "Warning: Source tarball not found at $TAP_DIR/angle-${VERSION}.tar.gz"
             ls -la "$TAP_DIR"/angle*.* 2>/dev/null || echo "No angle files found"
           fi
+
+      - name: Copy bottle tarball from tap
+        run: |
+          # Copy tarball from tap dir to workspace for upload
+          TAP_DIR="$(brew --repository)/Library/Taps/startergo/homebrew-angle"
+          cp "$TAP_DIR"/*.tar.gz . 2>/dev/null || echo "No tarball found"
 
       - name: Upload bottle tarball
         uses: actions/upload-artifact@v4
