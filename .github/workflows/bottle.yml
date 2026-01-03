@@ -405,7 +405,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: source-sha256
-          path: .
+          path: sha256-artifact
 
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@master
@@ -418,7 +418,7 @@ jobs:
       - name: Update formula with bottles and finalize
         run: |
           # Read source SHA256 from artifact
-          SOURCE_SHA256=$(cat source_sha256.txt 2>/dev/null) || true
+          SOURCE_SHA256=$(cat sha256-artifact/source_sha256.txt 2>/dev/null) || true
           if [ -z "$SOURCE_SHA256" ]; then
             echo "Error: SOURCE_SHA256 not found!"
             exit 1
