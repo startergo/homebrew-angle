@@ -425,7 +425,8 @@ jobs:
   publish-bottles:
     needs: [determine-version, build-bottle]
     runs-on: ubuntu-latest
-    if: needs.determine-version.outputs.create_release == 'true'
+    # Check that dependencies succeeded AND create_release is true
+    if: success() && needs.determine-version.outputs.create_release == 'true'
     env:
       VERSION: ${{ needs.determine-version.outputs.version }}
       ANGLE_COMMIT: ${{ needs.determine-version.outputs.angle_commit }}
