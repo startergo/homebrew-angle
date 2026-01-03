@@ -13,9 +13,6 @@ class Angle < Formula
   sha256 "3e7bb6e0111003e6bf0c526d936276431318e4bda6a8b53ea7e5d211cbea5e6b"
   license "BSD-2-Clause"
 
-  # bottle disabled due to version mismatch in existing releases
-  # next successful bottling will create correctly named bottles
-
   head "https://chromium.googlesource.com/angle/angle",
        using: :git
 

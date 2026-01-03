@@ -367,7 +367,7 @@ jobs:
           path: "*.json"
           if-no-files-found: ignore
 
-      - name: Commit formula, create tag, finalize formula
+      - name: Commit formula and finalize (no tag yet)
         run: |
           # SOURCE_SHA256 was saved to file in previous step (workspace persists between steps)
           SOURCE_SHA256=$(cat source_sha256.txt 2>/dev/null) || true
@@ -381,11 +381,6 @@ jobs:
           # Formula was already committed by brew bottle --merge, just push it
           echo "=== Pushing formula with explicit version $VERSION ==="
           git push origin master
-
-          # Create tag on the formula commit
-          echo "=== Creating tag v$VERSION ==="
-          git tag -f "v$VERSION" HEAD
-          git push -f origin "v$VERSION"
 
           # Now remove explicit version line, update url to new version, and add sha256
           awk -v version="$VERSION" -v new_sha256="$SOURCE_SHA256" '
@@ -409,10 +404,24 @@ jobs:
           echo "=== Finalized formula (url now v$VERSION, sha256 added) ==="
           head -20 Formula/angle.rb
 
-          # Commit and push final formula
+          # Commit and push final formula (tag will be created after release succeeds)
           git add Formula/angle.rb
           git commit -m "Finalize v$VERSION: update url and sha256"
           git push origin master
+  debug-publish:
+    needs: [determine-version, build-bottle]
+    runs-on: ubuntu-latest
+    # Always run this debug job to see why publish-bottles might be skipped
+    if: always()
+    steps:
+      - name: Debug outputs
+        run: |
+          echo "=== DEBUG OUTPUTS ==="
+          echo "create_release: '${{ needs.determine-version.outputs.create_release }}'"
+          echo "create_release == 'true': ${{ needs.determine-version.outputs.create_release == 'true' }}"
+          echo "create_release type: $(typeof '${{ needs.determine-version.outputs.create_release }}')"
+          echo "build-bottle result: ${{ needs.build-bottle.result }}"
+
   publish-bottles:
     needs: [determine-version, build-bottle]
     runs-on: ubuntu-latest
@@ -463,3 +472,12 @@ jobs:
               gh release upload "v$VERSION" "$tarball" || true
             fi
           done
+
+      - name: Create tag after successful release
+        run: |
+          # Only create tag after release is successfully created
+          echo "=== Creating tag v$VERSION ==="
+          git tag -f "v$VERSION" HEAD
+          git push -f origin "v$VERSION"
+          echo "=== Tag v$VERSION created successfully ==="
+
