@@ -12,6 +12,7 @@ on:
     branches: [master]
     paths:
       - '.github/workflows/**'
+      - 'Formula/**'
   pull_request:
     branches: [master]
   workflow_dispatch:
