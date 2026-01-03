@@ -401,6 +401,12 @@ jobs:
           pattern: bottle-*
           merge-multiple: true
 
+      - name: Download source SHA256
+        uses: actions/download-artifact@v4
+        with:
+          name: source-sha256
+          path: .
+
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@master
 
