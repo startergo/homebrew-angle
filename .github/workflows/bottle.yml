@@ -98,7 +98,8 @@ jobs:
 
       - name: Update tag and calculate new sha256
         run: |
-          VERSION="${{ needs.determine-version.outputs.version }}"
+          # Extract version from formula URL (not the calculated next version)
+          VERSION=$(grep 'url.*archive/refs/tags/v' Formula/angle.rb 2>/dev/null | sed -E 's/.*v([0-9.]+)\.tar\.gz.*/\1/')
 
           # Force update the existing tag to point to current HEAD
           # This updates the tarball at refs/tags/v$VERSION to contain latest code
