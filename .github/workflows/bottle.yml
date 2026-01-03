@@ -1,5 +1,9 @@
 name: Build Bottles
 
+concurrency:
+  group: bottle-build
+  cancel-in-progress: false
+
 on:
   schedule:
     # Run every Sunday at midnight UTC
@@ -141,10 +145,11 @@ jobs:
           git push origin master
 
   build-bottle:
-    needs: determine-version
+    needs: [determine-version, update-source-tarball]
     runs-on: macos-latest
     # Only run when create_release=true (workflow_dispatch or schedule)
-    if: needs.determine-version.outputs.create_release == 'true'
+    # always() ensures this runs even if update-source-tarball was skipped
+    if: always() && needs.determine-version.outputs.create_release == 'true' && (needs.update-source-tarball.result == 'success' || needs.update-source-tarball.result == 'skipped')
     env:
       ARCH: arm64
       VERSION: ${{ needs.determine-version.outputs.version }}
