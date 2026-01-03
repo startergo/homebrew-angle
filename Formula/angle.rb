@@ -9,9 +9,8 @@ class Angle < Formula
   depends_on "startergo/gn/gn" => :build
   depends_on "ninja" => :build
   depends_on "llvm" => :build
-  version "1.0.1"
-  url "https://github.com/startergo/homebrew-angle/archive/refs/tags/v1.0.0.tar.gz"
-  sha256 "6f6b88386dd8c2a47de92792eaf7baa83d08a465179a0fafb2706dd91375eb0a"
+  url "https://github.com/startergo/homebrew-angle/archive/refs/tags/v1.0.1.tar.gz"
+  sha256 "66e9e019d448090a1af2565596c68b35dc85d565211eee55d06843fd50464a10"
   license "BSD-2-Clause"
 
   # bottle disabled due to version mismatch in existing releases
