@@ -79,8 +79,7 @@ jobs:
 
           # Create release for scheduled runs and workflow_dispatch with release=true
           # Push events do NOT create releases (only update source tarball)
-          CREATE_RELEASE="${{ github.event.inputs.release }}"
-          if [ "$CREATE_RELEASE" = "true" ] || [ "${{ github.event_name }}" = "schedule" ]; then
+          if [ "${{ github.event.inputs.release }}" = "true" ] || [ "${{ github.event_name }}" = "schedule" ]; then
             echo "create_release=true" >> $GITHUB_OUTPUT
             echo "DEBUG: create_release=true"
           else
@@ -294,9 +293,8 @@ jobs:
           # Save SHA256 for next step (workspace persists between steps)
           echo "$SOURCE_SHA256" > source_sha256.txt
 
-          # Create bottle
-          brew bottle --json --force-core-tap "$TAP_DIR/Formula/angle.rb" \
-            --root-url=https://github.com/startergo/homebrew-angle/releases/download/v$VERSION
+          # Create bottle (without root-url to avoid pointing to non-existent release)
+          brew bottle --json --force-core-tap "$TAP_DIR/Formula/angle.rb"
 
           echo "=== Files after brew bottle ==="
           ls -la
@@ -368,47 +366,13 @@ jobs:
           path: "*.json"
           if-no-files-found: ignore
 
-      - name: Commit formula and finalize (no tag yet)
-        run: |
-          # SOURCE_SHA256 was saved to file in previous step (workspace persists between steps)
-          SOURCE_SHA256=$(cat source_sha256.txt 2>/dev/null) || true
+      - name: Upload source SHA256 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-sha256
+          path: source_sha256.txt
+          if-no-files-found: ignore
 
-          if [ -z "$SOURCE_SHA256" ]; then
-            echo "Error: SOURCE_SHA256 not found!"
-            exit 1
-          fi
-          echo "Source SHA256: $SOURCE_SHA256"
-
-          # Formula was already committed by brew bottle --merge, just push it
-          echo "=== Pushing formula with explicit version $VERSION ==="
-          git push origin master
-
-          # Now remove explicit version line, update url to new version, and add sha256
-          awk -v version="$VERSION" -v new_sha256="$SOURCE_SHA256" '
-            /^  version / {
-              next  # Remove explicit version line
-            }
-            /^  url "https:\/\/github.com\/startergo\/homebrew-angle\/archive\/refs\/tags\// {
-              print "  url \"https://github.com/startergo/homebrew-angle/archive/refs/tags/v" version ".tar.gz\""
-              next
-            }
-            /^  sha256/ && !in_bottle {
-              print "  sha256 \"" new_sha256 "\""
-              next
-            }
-            /^  bottle do/ { in_bottle=1 }
-            /^  end/ && in_bottle { in_bottle=0 }
-            { print }
-          ' Formula/angle.rb > Formula/angle.rb.tmp
-          mv Formula/angle.rb.tmp Formula/angle.rb
-
-          echo "=== Finalized formula (url now v$VERSION, sha256 added) ==="
-          head -20 Formula/angle.rb
-
-          # Commit and push final formula (tag will be created after release succeeds)
-          git add Formula/angle.rb
-          git commit -m "Finalize v$VERSION: update url and sha256"
-          git push origin master
   debug-publish:
     needs: [determine-version, build-bottle]
     runs-on: ubuntu-latest
@@ -440,18 +404,72 @@ jobs:
           pattern: bottle-*
           merge-multiple: true
 
-      - name: Process bottles
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@master
+
+      - name: Set up Git
+        uses: Homebrew/actions/git-user-config@master
+        with:
+          username: "startergo"
+
+      - name: Update formula with bottles and finalize
         run: |
+          # Read source SHA256 from artifact
+          SOURCE_SHA256=$(cat source_sha256.txt 2>/dev/null) || true
+          if [ -z "$SOURCE_SHA256" ]; then
+            echo "Error: SOURCE_SHA256 not found!"
+            exit 1
+          fi
+          echo "Source SHA256: $SOURCE_SHA256"
+
           # Show what we got
           ls -la *.tar.gz *.json 2>/dev/null || true
 
-          # Display bottle info (formula already updated in build-bottle job)
+          # Display bottle info
           if ls *.json 2>/dev/null; then
             for json in *.json; do
               echo "=== $json ==="
               cat "$json"
             done
           fi
+
+          # Merge bottle JSON into formula
+          if ls *.json 2>/dev/null; then
+            brew bottle --merge --write --force-core-tap *.json
+            echo "=== Formula after bottle merge ==="
+            head -20 Formula/angle.rb
+          fi
+
+          # Remove explicit version line, update url to new version, and add sha256
+          awk -v version="$VERSION" -v new_sha256="$SOURCE_SHA256" '
+            /^  version / {
+              next  # Remove explicit version line
+            }
+            /^  url "https:\/\/github.com\/startergo\/homebrew-angle\/archive\/refs\/tags\// {
+              print "  url \"https://github.com/startergo/homebrew-angle/archive/refs/tags/v" version ".tar.gz\""
+              next
+            }
+            /^  sha256/ && !in_bottle {
+              print "  sha256 \"" new_sha256 "\""
+              next
+            }
+            /^  bottle do/ { in_bottle=1 }
+            /^  end/ && in_bottle { in_bottle=0 }
+            { print }
+          ' Formula/angle.rb > Formula/angle.rb.tmp
+          mv Formula/angle.rb.tmp Formula/angle.rb
+
+          # Update bottle root_url to new version
+          sed -i.bak "s|root_url \"https://github.com/startergo/homebrew-angle/releases/download/v[^\"]*\"|root_url \"https://github.com/startergo/homebrew-angle/releases/download/v$VERSION\"|" Formula/angle.rb
+          rm -f Formula/angle.rb.bak
+
+          echo "=== Final formula (url v$VERSION, sha256 updated, bottle block updated) ==="
+          head -20 Formula/angle.rb
+
+          # Commit and push formula (tag will be created after release)
+          git add Formula/angle.rb
+          git commit -m "Update to v$VERSION with bottles"
+          git push origin master
 
       - name: Create GitHub Release
         env:
