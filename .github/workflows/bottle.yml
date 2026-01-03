@@ -163,12 +163,26 @@ jobs:
       - name: Checkout tap
         uses: actions/checkout@v4
 
+      - name: Create tag for new version (on current commit)
+        run: |
+          VERSION="${{ needs.determine-version.outputs.version }}"
+          echo "=== Creating tag v$VERSION on current commit ==="
+
+          # Create tag on CURRENT commit (before formula update)
+          # This ensures the tarball contains the old formula, avoiding circular reference
+          git tag -f "v$VERSION" HEAD
+          git push -f origin "v$VERSION"
+          echo "Created tag: v$VERSION at $(git rev-parse HEAD)"
+
+          # Wait for GitHub to generate the tarball
+          sleep 5
+
       - name: Update formula to new version
         run: |
           VERSION="${{ needs.determine-version.outputs.version }}"
           echo "=== Updating formula to v$VERSION ==="
 
-          # Update url in formula (tag will be created next)
+          # Update url in formula (tag already exists)
           awk -v version="$VERSION" '
             /^  url "https:\/\/github.com\/startergo\/homebrew-angle\/archive\/refs\/tags\// {
               print "  url \"https://github.com/startergo/homebrew-angle/archive/refs/tags/v" version ".tar.gz\""
@@ -181,22 +195,14 @@ jobs:
           echo "=== Formula updated ==="
           head -15 Formula/angle.rb
 
-      - name: Create tag for new version
+      - name: Commit formula update
         run: |
           VERSION="${{ needs.determine-version.outputs.version }}"
-          echo "=== Creating tag v$VERSION ==="
+          echo "=== Committing formula update ==="
 
-          # Create and push tag (formula now points to this tag)
           git add Formula/angle.rb
           git commit -m "Bump version to $VERSION"
           git push origin master
-
-          git tag -f "v$VERSION" HEAD
-          git push -f origin "v$VERSION"
-          echo "Created tag: v$VERSION"
-
-          # Wait for GitHub to generate the tarball
-          sleep 5
 
       - name: Build bottle
         run: |
