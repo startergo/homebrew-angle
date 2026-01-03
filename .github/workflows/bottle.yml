@@ -149,6 +149,24 @@ jobs:
       - name: Checkout tap
         uses: actions/checkout@v4
 
+      - name: Update formula to new version (before building)
+        run: |
+          VERSION="${{ needs.determine-version.outputs.version }}"
+          echo "=== Updating formula to version $VERSION before bottle build ==="
+
+          # Update url in formula (do NOT update sha256 yet - we don't know it)
+          awk -v version="$VERSION" '
+            /^  url "https:\/\/github.com\/startergo\/homebrew-angle\/archive\/refs\/tags\// {
+              print "  url \"https://github.com/startergo/homebrew-angle/archive/refs/tags/v" version ".tar.gz\""
+              next
+            }
+            { print }
+          ' Formula/angle.rb > Formula/angle.rb.tmp
+          mv Formula/angle.rb.tmp Formula/angle.rb
+
+          echo "=== Formula updated to version $VERSION ==="
+          head -15 Formula/angle.rb
+
       - name: Build bottle
         run: |
           set -x
@@ -288,7 +306,7 @@ jobs:
           path: "*.json"
           if-no-files-found: ignore
 
-      - name: Create tag and push (after successful build)
+      - name: Commit formula and create tag
         run: |
           # SOURCE_SHA256 was saved to file in previous step (workspace persists between steps)
           SOURCE_SHA256=$(cat source_sha256.txt 2>/dev/null) || true
@@ -299,13 +317,8 @@ jobs:
           fi
           echo "Source SHA256: $SOURCE_SHA256"
 
-          # Update url and source sha256 (before bottle block)
-          # Use awk to update url and sha256 only (not in bottle block)
-          awk -v version="$VERSION" -v new_sha256="$SOURCE_SHA256" '
-            /^  url "https:\/\/github.com\/startergo\/homebrew-angle\/archive\/refs\/tags\// {
-              print "  url \"https://github.com/startergo/homebrew-angle/archive/refs/tags/v" version ".tar.gz\""
-              next
-            }
+          # Update source sha256 only (url and bottle block already set by brew bottle --merge)
+          awk -v new_sha256="$SOURCE_SHA256" '
             /^  sha256/ && !in_bottle {
               print "  sha256 \"" new_sha256 "\""
               next
@@ -317,7 +330,7 @@ jobs:
           mv Formula/angle.rb.tmp Formula/angle.rb
 
           # Show the updated formula for verification
-          echo "=== Updated formula ==="
+          echo "=== Updated formula with sha256 ==="
           head -15 Formula/angle.rb
 
           # Commit and push formula
