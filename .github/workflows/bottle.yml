@@ -11,7 +11,6 @@ on:
   push:
     branches: [master]
     paths:
-      - 'Formula/**'
       - '.github/workflows/**'
   pull_request:
     branches: [master]
@@ -82,14 +81,19 @@ jobs:
           CREATE_RELEASE="${{ github.event.inputs.release }}"
           if [ "$CREATE_RELEASE" = "true" ] || [ "${{ github.event_name }}" = "schedule" ]; then
             echo "create_release=true" >> $GITHUB_OUTPUT
+            echo "DEBUG: create_release=true"
           else
             echo "create_release=false" >> $GITHUB_OUTPUT
+            echo "DEBUG: create_release=false"
           fi
+          # Verify the output was set
+          echo "DEBUG: Final create_release value check"
 
   update-source-tarball:
     needs: determine-version
     runs-on: ubuntu-latest
     # Only run on push events (when create_release=false)
+    # Also skip when we're building bottles (create_release=true)
     if: github.event_name == 'push' && needs.determine-version.outputs.create_release == 'false'
     steps:
       - name: Checkout tap
