@@ -49,11 +49,25 @@ jobs:
         run: |
           VERSION="${{ github.event.inputs.version }}"
 
-          # If no version specified, extract current version from formula
+          # If no version specified, use git describe to determine next version
           if [ -z "$VERSION" ]; then
-            # Extract version from formula url
-            VERSION=$(grep 'url.*archive/refs/tags/v' Formula/angle.rb 2>/dev/null | sed -E 's/.*v([0-9.]+)\.tar\.gz.*/\1/' || echo "1.0.0")
-            echo "Using current formula version: $VERSION"
+            # Get git describe output (e.g., v1.0.5-2-gf20b3d8)
+            DESCRIBE=$(git describe --tags 2>/dev/null || echo "v1.0.0")
+
+            # Check if we're ahead of a tag (contains dash)
+            if [[ "$DESCRIBE" =~ "-" ]]; then
+              # Extract current version from describe (first part before dash)
+              CURRENT=$(echo "$DESCRIBE" | cut -d- -f1 | sed 's/^v//')
+              COMMITS_AHEAD=$(echo "$DESCRIBE" | cut -d- -f2)
+              echo "Current tag: v$CURRENT, $COMMITS_AHEAD commits ahead"
+              # Increment patch version
+              VERSION=$(echo "$CURRENT" | awk -F. '{print $1"."$2"."$3+1}')
+            else
+              # Exactly on a tag, increment it
+              CURRENT=${DESCRIBE#v}
+              VERSION=$(echo "$CURRENT" | awk -F. '{print $1"."$2"."$3+1}')
+              echo "On tag v$CURRENT, incrementing to v$VERSION"
+            fi
           fi
 
           echo "version=$VERSION" >> $GITHUB_OUTPUT
@@ -149,12 +163,34 @@ jobs:
       - name: Checkout tap
         uses: actions/checkout@v4
 
-      - name: Create tag first (so tarball exists for brew)
+      - name: Update formula to new version
         run: |
           VERSION="${{ needs.determine-version.outputs.version }}"
-          echo "=== Creating tag v$VERSION first ==="
+          echo "=== Updating formula to v$VERSION ==="
 
-          # Create and push tag BEFORE building (so tarball exists for brew to download)
+          # Update url in formula (tag will be created next)
+          awk -v version="$VERSION" '
+            /^  url "https:\/\/github.com\/startergo\/homebrew-angle\/archive\/refs\/tags\// {
+              print "  url \"https://github.com/startergo/homebrew-angle/archive/refs/tags/v" version ".tar.gz\""
+              next
+            }
+            { print }
+          ' Formula/angle.rb > Formula/angle.rb.tmp
+          mv Formula/angle.rb.tmp Formula/angle.rb
+
+          echo "=== Formula updated ==="
+          head -15 Formula/angle.rb
+
+      - name: Create tag for new version
+        run: |
+          VERSION="${{ needs.determine-version.outputs.version }}"
+          echo "=== Creating tag v$VERSION ==="
+
+          # Create and push tag (formula now points to this tag)
+          git add Formula/angle.rb
+          git commit -m "Bump version to $VERSION"
+          git push origin master
+
           git tag -f "v$VERSION" HEAD
           git push -f origin "v$VERSION"
           echo "Created tag: v$VERSION"
@@ -301,7 +337,7 @@ jobs:
           path: "*.json"
           if-no-files-found: ignore
 
-      - name: Commit formula with new version
+      - name: Update formula with sha256
         run: |
           # SOURCE_SHA256 was saved to file in previous step (workspace persists between steps)
           SOURCE_SHA256=$(cat source_sha256.txt 2>/dev/null) || true
@@ -312,12 +348,8 @@ jobs:
           fi
           echo "Source SHA256: $SOURCE_SHA256"
 
-          # Update url and source sha256 (tag already exists, bottle block already set by brew bottle --merge)
-          awk -v version="$VERSION" -v new_sha256="$SOURCE_SHA256" '
-            /^  url "https:\/\/github.com\/startergo\/homebrew-angle\/archive\/refs\/tags\// {
-              print "  url \"https://github.com/startergo/homebrew-angle/archive/refs/tags/v" version ".tar.gz\""
-              next
-            }
+          # Update source sha256 only (url, version, and bottle block already set)
+          awk -v new_sha256="$SOURCE_SHA256" '
             /^  sha256/ && !in_bottle {
               print "  sha256 \"" new_sha256 "\""
               next
@@ -329,12 +361,12 @@ jobs:
           mv Formula/angle.rb.tmp Formula/angle.rb
 
           # Show the updated formula for verification
-          echo "=== Updated formula to version $VERSION ==="
+          echo "=== Updated formula with sha256 ==="
           head -15 Formula/angle.rb
 
           # Commit and push formula
           git add Formula/angle.rb
-          git commit -m "Update version to $VERSION"
+          git commit -m "Update sha256 for v$VERSION"
           git push origin master
   publish-bottles:
     needs: [determine-version, build-bottle]
