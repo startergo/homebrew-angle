@@ -1,9 +1,15 @@
 class Angle < Formula
   desc "Almost Native Graphics Layer Engine (OpenGL ES implementation for macOS)"
   homepage "https://chromium.googlesource.com/angle/angle"
+
+  bottle do
+    root_url "https://github.com/startergo/homebrew-angle/releases/download/v1.0.1"
+    sha256 cellar: :any, arm64_sequoia: "409a175e734f8be5be02f31b0af1664f7ce1e335e9d8e058192e0ddd2c1f2e70"
+  end
   depends_on "startergo/gn/gn" => :build
   depends_on "ninja" => :build
   depends_on "llvm" => :build
+  version "1.0.1"
   url "https://github.com/startergo/homebrew-angle/archive/refs/tags/v1.0.0.tar.gz"
   sha256 "6f6b88386dd8c2a47de92792eaf7baa83d08a465179a0fafb2706dd91375eb0a"
   license "BSD-2-Clause"
