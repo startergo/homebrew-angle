@@ -169,11 +169,18 @@ jobs:
       - name: Checkout tap
         uses: actions/checkout@v4
 
+      - name: Show formula state before update
+        run: |
+          echo "=== Formula before ==="
+          cat Formula/angle.rb
+
       - name: Update formula to new version (uncommitted)
         run: |
           VERSION="${{ needs.determine-version.outputs.version }}"
           CURRENT=$(grep 'url.*archive/refs/tags/v' Formula/angle.rb 2>/dev/null | sed -E 's/.*v([0-9.]+)\.tar\.gz.*/\1/' || echo "1.0.0")
           echo "=== Updating formula: version $VERSION, keeping url at v$CURRENT ==="
+          echo "=== Current formula state ==="
+          head -20 Formula/angle.rb
 
           # Add explicit version line, keep url pointing to existing tag
           # This allows bottle to be named correctly while using existing tarball
@@ -193,6 +200,8 @@ jobs:
 
           echo "=== Formula updated (version $VERSION, url still $CURRENT) ==="
           head -20 Formula/angle.rb
+          echo "=== Git diff ==="
+          git diff Formula/angle.rb || echo "No changes detected"
 
       - name: Build bottle
         run: |
@@ -226,7 +235,8 @@ jobs:
           rm -rf "$TAP_DIR/Casks"
 
           # Initialize tap as git repo if needed
-          if [ ! -d "$TAP_DIR/.git" ]; then
+          # But skip if TAP_DIR is the same as current directory (symlink case)
+          if [ ! -d "$TAP_DIR/.git" ] && [ "$(realpath "$TAP_DIR")" != "$(realpath "$CURRENT_DIR")" ]; then
             cd "$TAP_DIR"
             git init
             git checkout -b master
@@ -295,11 +305,31 @@ jobs:
             echo "WARNING: No tarball files found!"
           fi
 
-          # Merge JSON into formula
-          brew bottle --merge --write --force-core-tap *.json
+          # Save formula state before merge (brew bottle --merge modifies it)
+          cp Formula/angle.rb Formula/angle.rb.before-merge
+
+          # Merge JSON into formula (writes to current dir, not tap)
+          brew bottle --merge --write *.json
 
           echo "=== Files after brew bottle --merge ==="
           ls -la
+
+          # Restore explicit version if it was removed by merge
+          if ! grep -q "^  version \"$VERSION\"" Formula/angle.rb; then
+            echo "Restoring explicit version line that was removed by brew bottle --merge"
+            # Add version line before sha256
+            awk -v new_version="$VERSION" '
+              /^  sha256/ && !in_bottle {
+                print "  version \"" new_version "\""
+              }
+              { print }
+            ' Formula/angle.rb > Formula/angle.rb.tmp
+            mv Formula/angle.rb.tmp Formula/angle.rb
+
+            # Amend the commit created by brew bottle --merge to include the version line
+            git add Formula/angle.rb
+            git commit --amend --no-edit
+          fi
 
       - name: Upload source tarball
         run: |
@@ -344,10 +374,8 @@ jobs:
           fi
           echo "Source SHA256: $SOURCE_SHA256"
 
-          # Build succeeded! Commit formula with explicit version
-          echo "=== Committing formula with version $VERSION ==="
-          git add Formula/angle.rb
-          git commit -m "Bump version to $VERSION"
+          # Formula was already committed by brew bottle --merge, just push it
+          echo "=== Pushing formula with explicit version $VERSION ==="
           git push origin master
 
           # Create tag on the formula commit
