@@ -417,6 +417,12 @@ jobs:
 
       - name: Update formula with bottles and finalize
         run: |
+          # Debug: show what was downloaded
+          echo "=== Directory listing ==="
+          ls -laR
+          echo "=== Looking for sha256 file ==="
+          find . -name "*sha256*" -type f
+
           # Read source SHA256 from artifact
           SOURCE_SHA256=$(cat sha256-artifact/source_sha256.txt 2>/dev/null) || true
           if [ -z "$SOURCE_SHA256" ]; then
