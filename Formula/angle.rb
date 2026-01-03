@@ -4,15 +4,12 @@ class Angle < Formula
   depends_on "startergo/gn/gn" => :build
   depends_on "ninja" => :build
   depends_on "llvm" => :build
-  url "https://github.com/startergo/homebrew-angle/archive/refs/tags/v1.0.5.tar.gz"
-  sha256 "72a4d9b568afdfbfad725fd5ce1f20a2762e834bc631ff58b420c78534bd0198"
+  url "https://github.com/startergo/homebrew-angle/archive/refs/tags/v1.0.0.tar.gz"
+  sha256 ""
   license "BSD-2-Clause"
 
-  bottle do
-    root_url "https://github.com/startergo/homebrew-angle/releases/download/v1.0.5"
-    rebuild 4
-    sha256 cellar: :any, arm64_sequoia: "2ed52201836f90514ecaeceef9f287860dc39cef00e98ba24bdfb5a704ba8ba6"
-  end
+  # bottle disabled due to version mismatch in existing releases
+  # next successful bottling will create correctly named bottles
 
   head "https://chromium.googlesource.com/angle/angle",
        using: :git
