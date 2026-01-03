@@ -10,9 +10,6 @@ on:
     - cron: "0 0 * * 0"
   push:
     branches: [master]
-    paths:
-      - '.github/workflows/**'
-      - 'Formula/**'
   pull_request:
     branches: [master]
   workflow_dispatch:
@@ -390,7 +387,7 @@ jobs:
   publish-bottles:
     needs: [determine-version, build-bottle]
     runs-on: ubuntu-latest
-    if: needs.determine-version.outputs.create_release == 'true'
+    if: always() && needs.determine-version.outputs.create_release == 'true' && needs.build-bottle.result == 'success'
     env:
       VERSION: ${{ needs.determine-version.outputs.version }}
       ANGLE_COMMIT: ${{ needs.determine-version.outputs.angle_commit }}
