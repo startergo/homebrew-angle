@@ -349,14 +349,8 @@ jobs:
           # Create bottle with correct root_url (release will be created later)
           brew bottle --json --root-url="https://github.com/startergo/homebrew-angle/releases/download/v${VERSION}" --force-core-tap "$TAP_DIR/Formula/angle.rb"
 
-          # Fix bottle JSON to use correct double-dash filename
-          # brew bottle creates "filename" with single dash but "local_filename" with double dash
-          # We need to use local_filename for the correct bottle URL format
-          for json in *.json; do
-            jq '(.. | objects | select(.filename)) |= (.filename = .local_filename)' "$json" > "$json.tmp"
-            mv "$json.tmp" "$json"
-          done
-          echo "=== Fixed bottle JSON filenames ==="
+          # Show bottle JSON filenames (brew bottle creates single-dash by default)
+          echo "=== Bottle JSON filenames ==="
           cat *.json | jq '.[]?.bottle.tags[].filename' || true
 
           echo "=== Files after brew bottle ==="
@@ -397,37 +391,9 @@ jobs:
             git commit --amend --no-edit
           fi
 
-          # Restore filename fields in bottle block (brew bottle --merge may omit them)
-          # Extract filenames from JSON and add them to the formula
-          echo "=== Restoring filename fields to bottle block ==="
-          for json in *.json; do
-            # Extract all filenames from the JSON for this formula
-            filenames=$(jq -r '[.. | objects | select(.filename) | .filename] | join(",")' "$json" 2>/dev/null || echo "")
-            if [ -n "$filenames" ]; then
-              echo "Found filenames: $filenames"
-              # Add filename to each sha256 line in bottle block
-              awk -v filenames="$filenames" '
-                BEGIN { in_bottle=0; fn_split=split(filenames, fn_arr, ","); fn_idx=1 }
-                /^  bottle do/ { in_bottle=1 }
-                /^  end/ && in_bottle { in_bottle=0 }
-                /^  sha256/ && in_bottle {
-                  if (fn_idx <= fn_split && $0 !~ /filename:/) {
-                    sub(/"$/, ", filename: \"" fn_arr[fn_idx] "\"")
-                    fn_idx++
-                  }
-                }
-                { print }
-              ' Formula/angle.rb > Formula/angle.rb.tmp
-              mv Formula/angle.rb.tmp Formula/angle.rb
-            fi
-          done
-
-          echo "=== Formula after filename restoration ==="
+          # Show formula after merge
+          echo "=== Formula after brew bottle --merge ==="
           head -20 Formula/angle.rb
-
-          # Amend the commit to include filename fields
-          git add Formula/angle.rb
-          git commit --amend --no-edit || true
 
       - name: Upload source tarball
         run: |
@@ -447,21 +413,8 @@ jobs:
           # Copy tarball from temp location to workspace
           cp /tmp/bottle-artifacts/*.tar.gz . 2>/dev/null || echo "No tarball found"
 
-      - name: Rename bottle to correct double-dash filename
+      - name: Show bottle tarballs
         run: |
-          # Get the correct double-dash filename from the JSON
-          for json in *.json; do
-            CORRECT_FILENAME=$(jq -r '[.. | objects | select(.local_filename) | .local_filename] | join(",")' "$json" 2>/dev/null | head -1)
-            if [ -n "$CORRECT_FILENAME" ]; then
-              echo "Correct filename from JSON: $CORRECT_FILENAME"
-              # Find the actual tarball file (single-dash name)
-              ACTUAL_FILE=$(ls angle-*.tar.gz 2>/dev/null | head -1)
-              if [ -n "$ACTUAL_FILE" ]; then
-                echo "Renaming $ACTUAL_FILE to $CORRECT_FILENAME"
-                mv "$ACTUAL_FILE" "$CORRECT_FILENAME"
-              fi
-            fi
-          done
           ls -la *.tar.gz 2>/dev/null || echo "No tarballs found"
 
       - name: Configure git credentials for push
@@ -470,18 +423,30 @@ jobs:
 
       - name: Update formula with version and tag URL
         run: |
+          # Read the source tarball sha256 from the file
+          if [ -f source_sha256.txt ]; then
+            SOURCE_SHA256=$(cat source_sha256.txt)
+            echo "SOURCE_SHA256: $SOURCE_SHA256"
+          else
+            echo "ERROR: source_sha256.txt not found!"
+            exit 1
+          fi
+
           # Update formula with version, url, and sha256
-          # SOURCE_SHA256 is already set from earlier step
           awk -v version="$VERSION" -v new_sha256="$SOURCE_SHA256" '
-            BEGIN { in_bottle=0; added_version=0 }
+            BEGIN { in_bottle=0; added_version=0; printed_version=0 }
             /^  version / {
-              print "  version \"" version "\""
+              if (!printed_version) {
+                print "  version \"" version "\""
+                printed_version=1
+              }
               added_version=1
               next
             }
             /^  url "https:\/\/github.com\/startergo\/homebrew-angle\/archive\// {
               if (!added_version) {
                 print "  version \"" version "\""
+                printed_version=1
                 added_version=1
               }
               # Convert from commit URL or tag URL to version tag URL
@@ -519,8 +484,8 @@ jobs:
           $(ls *.tar.gz 2>/dev/null | sed 's/^/- /' || echo '')" \
             --latest || true
 
-          # Upload bottle tarballs
-          for tarball in *.tar.gz; do
+          # Upload bottle tarballs (single-dash format, exclude commit.tar.gz)
+          for tarball in angle-*.tar.gz; do
             if [ -f "$tarball" ]; then
               echo "Uploading $tarball"
               gh release upload "v$VERSION" "$tarball" || true
