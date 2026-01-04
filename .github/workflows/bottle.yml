@@ -100,12 +100,18 @@ jobs:
       - name: Check if we should run
         id: check
         run: |
-          # Skip if HEAD commit is from update-source-tarball job
+          # Skip if HEAD commit is from update-source-tarball job (prevents infinite loop)
           if git log -1 --pretty=%B | grep -q "source tarball sha256 to"; then
             echo "Skipping: HEAD commit is from update-source-tarball job"
             echo "should_run=false" >> $GITHUB_OUTPUT
           else
-            echo "should_run=true" >> $GITHUB_OUTPUT
+            # Also skip if HEAD commit is from publish-bottles job (tag will be updated after release)
+            if git log -1 --pretty=%B | grep -q "Update to v.* with bottles"; then
+              echo "Skipping: HEAD commit is from publish-bottles job, tag was just updated"
+              echo "should_run=false" >> $GITHUB_OUTPUT
+            else
+              echo "should_run=true" >> $GITHUB_OUTPUT
+            fi
           fi
 
       - name: Set up Git
@@ -216,6 +222,34 @@ jobs:
           echo "=== Git diff ==="
           git diff Formula/angle.rb || echo "No changes detected"
 
+          # Download commit tarball and calculate its sha256
+          # This is needed because the commit tarball has different content than the tag tarball
+          TARBALL_URL="https://github.com/startergo/homebrew-angle/archive/${COMMIT}.tar.gz"
+          echo "=== Downloading commit tarball to calculate sha256 ==="
+          echo "URL: $TARBALL_URL"
+          curl -L -o "commit.tar.gz" "$TARBALL_URL"
+          COMMIT_SHA256=$(shasum -a 256 commit.tar.gz | awk '{print $1}')
+          echo "Commit tarball sha256: $COMMIT_SHA256"
+
+          # Update formula with the commit tarball's sha256
+          awk -v new_sha256="$COMMIT_SHA256" '
+            BEGIN { in_bottle=0 }
+            /^  sha256/ && !in_bottle {
+              print "  sha256 \"" new_sha256 "\""
+              next
+            }
+            /^  bottle do/ { in_bottle=1 }
+            /^  end/ && in_bottle { in_bottle=0 }
+            { print }
+          ' Formula/angle.rb > Formula/angle.rb.tmp
+          mv Formula/angle.rb.tmp Formula/angle.rb
+
+          echo "=== Formula with updated sha256 ==="
+          head -20 Formula/angle.rb
+
+          # Save COMMIT_SHA256 for the Build bottle step
+          echo "$COMMIT_SHA256" > commit_sha256.txt
+
       - name: Build bottle
         run: |
           set -x
@@ -294,13 +328,23 @@ jobs:
             echo "WARNING: SHA256 file not found at /tmp/angle-source-sha256.txt"
           fi
 
+          # Read commit tarball SHA256 that was calculated in the previous step
+          if [ -f commit_sha256.txt ]; then
+            COMMIT_SHA256=$(cat commit_sha256.txt)
+            echo "COMMIT_SHA256 from file: $COMMIT_SHA256"
+          else
+            echo "ERROR: commit_sha256.txt not found! This should have been created in the previous step."
+            exit 1
+          fi
+
           brew link --overwrite angle || true
           echo "=== Angle build complete ==="
           # Restore vulkan-headers for other workflows
           brew link vulkan-headers 2>/dev/null || true
 
-          # Save SHA256 for next step (workspace persists between steps)
-          echo "$SOURCE_SHA256" > source_sha256.txt
+          # Save commit tarball SHA256 for publish-bottles job
+          # This is the sha256 of the homebrew-angle commit tarball, not the ANGLE source
+          echo "$COMMIT_SHA256" > source_sha256.txt
 
           # Create bottle with correct root_url (release will be created later)
           brew bottle --json --root-url="https://github.com/startergo/homebrew-angle/releases/download/v${VERSION}" --force-core-tap "$TAP_DIR/Formula/angle.rb"
