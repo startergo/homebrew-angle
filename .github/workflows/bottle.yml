@@ -178,28 +178,26 @@ jobs:
       - name: Update formula to new version (uncommitted)
         run: |
           VERSION="${{ needs.determine-version.outputs.version }}"
-          CURRENT=$(grep 'url.*archive/refs/tags/v' Formula/angle.rb 2>/dev/null | sed -E 's/.*v([0-9.]+)\.tar\.gz.*/\1/' || echo "1.0.0")
-          echo "=== Updating formula: version $VERSION, keeping url at v$CURRENT ==="
-          echo "=== Current formula state ==="
-          head -20 Formula/angle.rb
+          COMMIT=$(git rev-parse HEAD)
+          echo "=== Updating formula: version $VERSION, url to commit $COMMIT ==="
 
-          # Add explicit version line, keep url pointing to existing tag
-          # This allows bottle to be named correctly while using existing tarball
-          awk -v new_version="$VERSION" -v current_version="$CURRENT" '
+          # Add version line and update URL to point to current commit
+          # This ensures version and URL are in sync for correct bottle filename
+          awk -v new_version="$VERSION" -v commit="$COMMIT" '
             BEGIN { inserted = 0 }
             /^  url "https:\/\/github.com\/startergo\/homebrew-angle\/archive\/refs\/tags\// {
               if (!inserted) {
                 print "  version \"" new_version "\""
                 inserted = 1
               }
-              print "  url \"https://github.com/startergo/homebrew-angle/archive/refs/tags/v" current_version ".tar.gz\""
+              print "  url \"https://github.com/startergo/homebrew-angle/archive/" commit ".tar.gz\""
               next
             }
             { print }
           ' Formula/angle.rb > Formula/angle.rb.tmp
           mv Formula/angle.rb.tmp Formula/angle.rb
 
-          echo "=== Formula updated (version $VERSION, url still $CURRENT) ==="
+          echo "=== Formula updated (version $VERSION, url to commit) ==="
           head -20 Formula/angle.rb
           echo "=== Git diff ==="
           git diff Formula/angle.rb || echo "No changes detected"
@@ -290,8 +288,8 @@ jobs:
           # Save SHA256 for next step (workspace persists between steps)
           echo "$SOURCE_SHA256" > source_sha256.txt
 
-          # Create bottle (without root-url to avoid pointing to non-existent release)
-          brew bottle --json --force-core-tap "$TAP_DIR/Formula/angle.rb"
+          # Create bottle with correct root_url (release will be created later)
+          brew bottle --json --root-url="https://github.com/startergo/homebrew-angle/releases/download/v${VERSION}" --force-core-tap "$TAP_DIR/Formula/angle.rb"
 
           echo "=== Files after brew bottle ==="
           ls -la
@@ -430,18 +428,28 @@ jobs:
 
           # Merge bottle JSON into formula
           if ls *.json 2>/dev/null; then
+            echo "=== Bottle JSON (should have correct root_url and filenames) ==="
+            cat *.json | jq '.[]?.bottle | {root_url, filenames: [.tags[].filename]}' || true
+
             brew bottle --merge --write --force-core-tap *.json
             echo "=== Formula after bottle merge ==="
             head -20 Formula/angle.rb
           fi
 
-          # Remove explicit version line, update url to new version, add sha256, and add root_url
+          # Update formula with version, url, and sha256 (bottle block is already correct from merge)
           awk -v version="$VERSION" -v new_sha256="$SOURCE_SHA256" '
-            BEGIN { in_bottle=0; added_root_url=0 }
+            BEGIN { in_bottle=0; added_version=0 }
             /^  version / {
-              next  # Remove explicit version line
+              print "  version \"" version "\""
+              added_version=1
+              next
             }
-            /^  url "https:\/\/github.com\/startergo\/homebrew-angle\/archive\/refs\/tags\// {
+            /^  url "https:\/\/github.com\/startergo\/homebrew-angle\/archive\// {
+              if (!added_version) {
+                print "  version \"" version "\""
+                added_version=1
+              }
+              # Convert from commit URL or tag URL to version tag URL
               print "  url \"https://github.com/startergo/homebrew-angle/archive/refs/tags/v" version ".tar.gz\""
               next
             }
@@ -449,19 +457,8 @@ jobs:
               print "  sha256 \"" new_sha256 "\""
               next
             }
-            /^  bottle do/ {
-              in_bottle=1
-              print
-              print "  root_url \"https://github.com/startergo/homebrew-angle/releases/download/v" version "\""
-              added_root_url=1
-              next
-            }
-            /^  root_url/ && in_bottle {
-              next  # Skip any existing root_url lines (we add our own)
-            }
-            /^  end/ && in_bottle {
-              in_bottle=0
-            }
+            /^  bottle do/ { in_bottle=1 }
+            /^  end/ && in_bottle { in_bottle=0 }
             { print }
           ' Formula/angle.rb > Formula/angle.rb.tmp
           mv Formula/angle.rb.tmp Formula/angle.rb
