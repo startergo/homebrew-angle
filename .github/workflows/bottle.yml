@@ -380,6 +380,8 @@ jobs:
     steps:
       - name: Checkout tap
         uses: actions/checkout@v4
+        with:
+          persist-credentials: true
 
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@master
