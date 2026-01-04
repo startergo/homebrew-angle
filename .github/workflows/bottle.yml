@@ -435,18 +435,18 @@ jobs:
         run: |
           git config --global url.https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/.insteadOf https://github.com/
 
-      - name: Update formula with version and tag URL
+      - name: Update formula with version and tag URL (commit sha256, temporary)
         run: |
-          # Read the source tarball sha256 from the file
+          # Read the commit tarball sha256 (temporary, will be replaced after tag creation)
           if [ -f source_sha256.txt ]; then
             SOURCE_SHA256=$(cat source_sha256.txt)
-            echo "SOURCE_SHA256: $SOURCE_SHA256"
+            echo "Commit tarball sha256 (temporary): $SOURCE_SHA256"
           else
             echo "ERROR: source_sha256.txt not found!"
             exit 1
           fi
 
-          # Update formula with version, url, and sha256
+          # Update formula with version, url, and commit tarball sha256 (temporary)
           awk -v version="$VERSION" -v new_sha256="$SOURCE_SHA256" '
             BEGIN { in_bottle=0; added_version=0; printed_version=0 }
             /^  version / {
@@ -477,7 +477,7 @@ jobs:
           ' Formula/angle.rb > Formula/angle.rb.tmp
           mv Formula/angle.rb.tmp Formula/angle.rb
 
-          echo "=== Final formula ==="
+          echo "=== Formula with commit sha256 (temporary) ==="
           head -20 Formula/angle.rb
 
           # Commit and push formula
@@ -506,10 +506,32 @@ jobs:
             fi
           done
 
-      - name: Create tag after successful release
+      - name: Update formula with tag tarball sha256
         run: |
-          # Only create tag after release is successfully created
-          echo "=== Creating tag v$VERSION ==="
-          git tag -f "v$VERSION" HEAD
-          git push -f origin "v$VERSION"
-          echo "=== Tag v$VERSION created successfully ==="
+          # Release is created with tag, now calculate tag tarball sha256
+          TARBALL_URL="https://github.com/startergo/homebrew-angle/archive/refs/tags/v${VERSION}.tar.gz"
+          echo "Downloading tag tarball to calculate sha256: $TARBALL_URL"
+          curl -L -o "tag-tarball.tar.gz" "$TARBALL_URL"
+          TAG_SHA256=$(shasum -a 256 tag-tarball.tar.gz | awk '{print $1}')
+          echo "Tag tarball sha256: $TAG_SHA256"
+
+          # Update formula with tag tarball sha256
+          awk -v new_sha256="$TAG_SHA256" '
+            BEGIN { in_bottle=0 }
+            /^  sha256/ && !in_bottle {
+              print "  sha256 \"" new_sha256 "\""
+              next
+            }
+            /^  bottle do/ { in_bottle=1 }
+            /^  end/ && in_bottle { in_bottle=0 }
+            { print }
+          ' Formula/angle.rb > Formula/angle.rb.tmp
+          mv Formula/angle.rb.tmp Formula/angle.rb
+
+          echo "=== Formula with tag sha256 ==="
+          head -20 Formula/angle.rb
+
+          # Commit and push formula with correct sha256
+          git add Formula/angle.rb
+          git commit --amend --no-edit
+          git push -f origin master
