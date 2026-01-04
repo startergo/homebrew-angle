@@ -3,6 +3,7 @@ class Angle < Formula
   homepage "https://chromium.googlesource.com/angle/angle"
 
   bottle do
+    root_url "https://github.com/startergo/homebrew-angle/releases/download/v1.0.4"
     sha256 cellar: :any, arm64_sequoia: "301079d5a2fbb697ab421013b37d86e2272b73b227d734b02bbd0ccfca4d1029"
   end
   depends_on "startergo/gn/gn" => :build
