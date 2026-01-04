@@ -291,6 +291,16 @@ jobs:
           # Create bottle with correct root_url (release will be created later)
           brew bottle --json --root-url="https://github.com/startergo/homebrew-angle/releases/download/v${VERSION}" --force-core-tap "$TAP_DIR/Formula/angle.rb"
 
+          # Fix bottle JSON to use correct double-dash filename
+          # brew bottle creates "filename" with single dash but "local_filename" with double dash
+          # We need to use local_filename for the correct bottle URL format
+          for json in *.json; do
+            jq '(.. | objects | select(.filename)) |= (.filename = .local_filename)' "$json" > "$json.tmp"
+            mv "$json.tmp" "$json"
+          done
+          echo "=== Fixed bottle JSON filenames ==="
+          cat *.json | jq '.[]?.bottle.tags[].filename' || true
+
           echo "=== Files after brew bottle ==="
           ls -la
 
