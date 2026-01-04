@@ -411,9 +411,7 @@ jobs:
                 /^  bottle do/ { in_bottle=1 }
                 /^  end/ && in_bottle { in_bottle=0 }
                 /^  sha256/ && in_bottle {
-                  # Add filename field if we have one and this line doesn't already have it
-                  if (fn_idx <= fn_split && !/filename:/) {
-                    # Replace the closing quote with filename field
+                  if (fn_idx <= fn_split && $0 !~ /filename:/) {
                     sub(/"$/, ", filename: \"" fn_arr[fn_idx] "\"")
                     fn_idx++
                   }
