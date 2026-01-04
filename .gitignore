@@ -1,0 +1,8 @@
+.DS_Store
+*.tar.gz
+*.json
+*.bottle.*
+test_bottle.sh
+angle-homebrew-bottle.patch
+angle-changes.patch
+.claude

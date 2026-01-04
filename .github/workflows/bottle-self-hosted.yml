@@ -1,0 +1,197 @@
+name: Build Bottles (Self-Hosted)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to tag (e.g., 1.0.0 or 2025.12.27)'
+        required: false
+        default: ''
+      release:
+        description: 'Create GitHub release?'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  determine-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      angle_commit: ${{ steps.angle_commit.outputs.commit }}
+      create_release: ${{ steps.version.outputs.create_release }}
+    steps:
+      - id: angle_commit
+        run: |
+          COMMIT=$(git ls-remote https://chromium.googlesource.com/angle/angle HEAD | awk '{ print $1 }')
+          SHORT_COMMIT=${COMMIT:0:8}
+          echo "commit=$COMMIT" >> $GITHUB_OUTPUT
+          echo "ANGLE commit: $SHORT_COMMIT"
+
+      - id: version
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+
+          if [ -z "$VERSION" ]; then
+            VERSION=$(date +%Y.%m.%d)
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
+          CREATE_RELEASE="${{ github.event.inputs.release }}"
+          if [ "$CREATE_RELEASE" = "true" ] || [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "create_release=true" >> $GITHUB_OUTPUT
+          else
+            echo "create_release=false" >> $GITHUB_OUTPUT
+          fi
+
+  build-bottle:
+    needs: determine-version
+    # Use self-hosted runner
+    runs-on: self-hosted
+    env:
+      ARCH: arm64
+      VERSION: ${{ needs.determine-version.outputs.version }}
+      SOURCE_VERSION: 1.0.0
+      ANGLE_COMMIT: ${{ needs.determine-version.outputs.angle_commit }}
+    steps:
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@master
+
+      - name: Set up Git
+        uses: Homebrew/actions/git-user-config@master
+        with:
+          username: "startergo"
+
+      - name: Checkout tap
+        uses: actions/checkout@v4
+
+      - name: Download build scripts
+        run: |
+          curl -o build.sh https://raw.githubusercontent.com/startergo/build-angle/main/build.sh
+          curl -o clean_deps.py https://raw.githubusercontent.com/startergo/build-angle/main/clean_deps.py
+          chmod +x build.sh
+
+      - name: Update formula version
+        run: |
+          sed -i.bak 's/version "[^"]*"/version "$VERSION"/' Formula/angle.rb
+          sed -i.bak 's|root_url "[^"]*"|root_url "https://github.com/startergo/homebrew-angle/releases/download/v$VERSION"|' Formula/angle.rb
+          rm -f Formula/angle.rb.bak
+
+      - name: Build bottle
+        run: |
+          TAP_DIR="$(brew --repository)/Library/Taps/startergo/homebrew-angle"
+          mkdir -p "$TAP_DIR/Formula"
+
+          cp Formula/angle.rb "$TAP_DIR/Formula/" || true
+          rm -rf "$TAP_DIR/Casks"
+
+          if [ ! -d "$TAP_DIR/.git" ]; then
+            cd "$TAP_DIR"
+            git init
+            git checkout -b master
+            echo "# homebrew-angle tap" > README.md
+            git add README.md Formula/angle.rb
+            git commit -m "Add angle formula"
+            cd -
+          fi
+
+          # Set env for local taps and uninstall any existing
+          export HOMEBREW_NO_INSTALL_FROM_API=1
+          brew uninstall angle --force 2>/dev/null || true
+
+          # Unlink conflicting packages
+          brew unlink vulkan-headers 2>/dev/null || true
+
+          # Install from source with --build-bottle (required for bottle creation)
+          brew install --build-bottle startergo/angle/angle || true
+          brew link --overwrite angle || true
+          # Restore vulkan-headers for other workflows
+          brew link vulkan-headers 2>/dev/null || true
+
+          brew bottle --json --force-core-tap "$TAP_DIR/Formula/angle.rb" \
+            --root-url=https://github.com/startergo/homebrew-angle/releases/download/v$VERSION
+
+          brew bottle --merge --write --force-core-tap *.json
+
+          echo "=== Created bottle files ==="
+          ls -la *.rb *.json 2>/dev/null || echo "No files in current dir"
+
+      - name: Upload bottle tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: bottle-arm64
+          path: "*.tar.gz"
+          if-no-files-found: ignore
+
+      - name: Upload bottle JSON
+        uses: actions/upload-artifact@v4
+        with:
+          name: bottle-arm64
+          path: "*.json"
+          if-no-files-found: ignore
+
+  publish-bottles:
+    needs: [determine-version, build-bottle]
+    runs-on: ubuntu-latest
+    if: needs.determine-version.outputs.create_release == 'true'
+    env:
+      VERSION: ${{ needs.determine-version.outputs.version }}
+      ANGLE_COMMIT: ${{ needs.determine-version.outputs.angle_commit }}
+    steps:
+      - name: Checkout tap
+        uses: actions/checkout@v4
+
+      - name: Download all bottles
+        uses: actions/download-artifact@v4
+        with:
+          pattern: bottle-*
+          merge-multiple: true
+
+      - name: Process bottles
+        run: |
+          ls -la *.tar.gz *.json 2>/dev/null || true
+
+          if ls *.json 2>/dev/null; then
+            for json in *.json; do
+              echo "=== $json ==="
+              cat "$json"
+            done
+
+            brew bottle --merge --write *.json
+
+            echo "=== Updated Formula/angle.rb ==="
+            cat Formula/angle.rb || true
+          fi
+
+      - name: Commit bottles to formula
+        run: |
+          git config user.email "actions@github.com"
+          git config user.name "GitHub Actions"
+
+          git add Formula/angle.rb || git add Formula/ || true
+          git commit -m "Update bottles for v$VERSION (ANGLE $ANGLE_COMMIT)" || echo "No changes to commit"
+          git push origin master || true
+
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v$VERSION" \
+            --title "ANGLE v$VERSION" \
+            --notes "Built from ANGLE commit: $ANGLE_COMMIT
+
+          ### Bottles
+          $(ls *.tar.gz 2>/dev/null | sed 's/^/- /' || echo '')" \
+            --latest || true
+
+          for tarball in *.tar.gz; do
+            if [ -f "$tarball" ]; then
+              echo "Uploading $tarball"
+              gh release upload "v$VERSION" "$tarball" || true
+            fi
+          done

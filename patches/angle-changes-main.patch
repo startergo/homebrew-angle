@@ -1,0 +1,83 @@
+diff --git a/src/compiler/translator/msl/EmitMetal.cpp b/src/compiler/translator/msl/EmitMetal.cpp
+index c0c1084..0cdc1ba 100644
+--- a/src/compiler/translator/msl/EmitMetal.cpp
++++ b/src/compiler/translator/msl/EmitMetal.cpp
+@@ -532,9 +532,9 @@ static const char *GetOperatorString(TOperator op,
+         case TOperator::EOpSaturate:
+             return "metal::saturate";  // TODO fast vs precise namespace
+         case TOperator::EOpMix:
+-            if (!argType1->isScalar() && argType2 && argType2->getBasicType() == EbtBool)
++            if (argType2 && argType2->getBasicType() == EbtBool)
+             {
+-                return "ANGLE_mix_bool";
++                return "metal::select";
+             }
+             return "metal::mix";
+         case TOperator::EOpStep:
+diff --git a/src/compiler/translator/msl/ProgramPrelude.cpp b/src/compiler/translator/msl/ProgramPrelude.cpp
+index 8b3b1d2..9044fba 100644
+--- a/src/compiler/translator/msl/ProgramPrelude.cpp
++++ b/src/compiler/translator/msl/ProgramPrelude.cpp
+@@ -117,7 +117,6 @@ class ProgramPrelude : public TIntermTraverser
+     void degrees();
+     void radians();
+     void mod();
+-    void mixBool();
+     void postIncrementMatrix();
+     void preIncrementMatrix();
+     void postDecrementMatrix();
+@@ -436,15 +435,6 @@ ANGLE_ALWAYS_INLINE X ANGLE_mod(X x, Y y)
+ }
+ )")
+ 
+-PROGRAM_PRELUDE_DECLARE(mixBool,
+-                        R"(
+-template <typename T, int N>
+-ANGLE_ALWAYS_INLINE metal::vec<T,N> ANGLE_mix_bool(metal::vec<T, N> a, metal::vec<T, N> b, metal::vec<bool, N> c)
+-{
+-    return metal::mix(a, b, static_cast<metal::vec<T,N>>(c));
+-}
+-)")
+-
+ PROGRAM_PRELUDE_DECLARE(pack_half_2x16,
+                         R"(
+ ANGLE_ALWAYS_INLINE uint32_t ANGLE_pack_half_2x16(float2 v)
+@@ -3417,12 +3407,6 @@ void ProgramPrelude::visitOperator(TOperator op,
+         case TOperator::EOpSmoothstep:
+             break;
+         case TOperator::EOpMix:
+-            if (argType2->getBasicType() == TBasicType::EbtBool)
+-            {
+-                mixBool();
+-            }
+-            break;
+-
+         case TOperator::EOpAll:
+         case TOperator::EOpAny:
+         case TOperator::EOpIsnan:
+diff --git a/src/libANGLE/renderer/metal/mtl_common.h b/src/libANGLE/renderer/metal/mtl_common.h
+index 434a8b5..6d9ad79 100644
+--- a/src/libANGLE/renderer/metal/mtl_common.h
++++ b/src/libANGLE/renderer/metal/mtl_common.h
+@@ -99,7 +99,7 @@ constexpr uint32_t kMaxColorTargetBitsApple1To3      = 256;
+ constexpr uint32_t kMaxColorTargetBitsApple4Plus     = 512;
+ constexpr uint32_t kMaxColorTargetBitsMacAndCatalyst = std::numeric_limits<uint32_t>::max();
+ 
+-constexpr uint32_t kMaxShaderUBOs = 12;
++constexpr uint32_t kMaxShaderUBOs = 16;
+ constexpr uint32_t kMaxUBOSize    = 16384;
+ 
+ constexpr uint32_t kMaxShaderXFBs = gl::IMPLEMENTATION_MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS;
+diff --git a/src/libANGLE/renderer/vulkan/VertexArrayVk.cpp b/src/libANGLE/renderer/vulkan/VertexArrayVk.cpp
+index f3727f6..b6ca340 100644
+--- a/src/libANGLE/renderer/vulkan/VertexArrayVk.cpp
++++ b/src/libANGLE/renderer/vulkan/VertexArrayVk.cpp
+@@ -1019,7 +1019,7 @@ ANGLE_INLINE angle::Result VertexArrayVk::syncDirtyEnabledNonStreamingAttrib(
+         vk::BufferHelper &bufferHelper         = bufferVk->getBuffer();
+         mCurrentArrayBuffers[attribIndex]      = &bufferHelper;
+         mCurrentArrayBufferSerial[attribIndex] = bufferHelper.getBufferSerial();
+-        VkDeviceSize bufferSize = renderer->padVertexAttribBufferSizeIfNeeded(bufferVk->getSize());
++        VkDeviceSize bufferSize = renderer->padVertexAttribBufferSizeIfNeeded(bufferHelper.getSize());
+ 
+         VkDeviceSize bufferOffset;
+         if (contextVk->getFeatures().useVertexInputBindingStrideDynamicState.enabled)

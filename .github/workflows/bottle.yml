@@ -1,0 +1,537 @@
+name: Build Bottles
+
+concurrency:
+  group: bottle-build
+  cancel-in-progress: false
+
+on:
+  schedule:
+    # Run every Sunday at midnight UTC
+    - cron: "0 0 * * 0"
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to tag (e.g., 1.0.0 or 2025.12.27)'
+        required: false
+        default: ''
+      release:
+        description: 'Create GitHub release?'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  determine-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      angle_commit: ${{ steps.angle_commit.outputs.commit }}
+      create_release: ${{ steps.version.outputs.create_release }}
+    steps:
+      - name: Checkout tap
+        uses: actions/checkout@v4
+
+      - id: angle_commit
+        run: |
+          # Get latest ANGLE commit hash (full 40 chars for git fetch)
+          COMMIT=$(git ls-remote https://chromium.googlesource.com/angle/angle HEAD | awk '{ print $1 }')
+          SHORT_COMMIT=${COMMIT:0:8}
+          echo "commit=$COMMIT" >> $GITHUB_OUTPUT
+          echo "ANGLE commit: $SHORT_COMMIT"
+
+      - id: version
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+
+          # If no version specified, use git describe to determine next version
+          if [ -z "$VERSION" ]; then
+            # Get git describe output (e.g., v1.0.5-2-gf20b3d8)
+            DESCRIBE=$(git describe --tags 2>/dev/null || echo "v1.0.0")
+
+            # Check if we're ahead of a tag (contains dash)
+            if [[ "$DESCRIBE" =~ "-" ]]; then
+              # Extract current version from describe (first part before dash)
+              CURRENT=$(echo "$DESCRIBE" | cut -d- -f1 | sed 's/^v//')
+              COMMITS_AHEAD=$(echo "$DESCRIBE" | cut -d- -f2)
+              echo "Current tag: v$CURRENT, $COMMITS_AHEAD commits ahead"
+              # Increment patch version
+              VERSION=$(echo "$CURRENT" | awk -F. '{print $1"."$2"."$3+1}')
+            else
+              # Exactly on a tag, increment it
+              CURRENT=${DESCRIBE#v}
+              VERSION=$(echo "$CURRENT" | awk -F. '{print $1"."$2"."$3+1}')
+              echo "On tag v$CURRENT, incrementing to v$VERSION"
+            fi
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
+          # Create release for scheduled runs and workflow_dispatch with release=true
+          # Push events do NOT create releases (only update source tarball)
+          if [ "${{ github.event.inputs.release }}" = "true" ] || [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "create_release=true" >> $GITHUB_OUTPUT
+            echo "DEBUG: create_release=true"
+          else
+            echo "create_release=false" >> $GITHUB_OUTPUT
+            echo "DEBUG: create_release=false"
+          fi
+          # Verify the output was set
+          echo "DEBUG: Final create_release value check"
+
+  update-source-tarball:
+    needs: determine-version
+    runs-on: ubuntu-latest
+    # Only run on push events (when create_release=false)
+    # Also skip when we're building bottles (create_release=true)
+    # Skip if the HEAD commit is from this job (to prevent infinite loop)
+    if: github.event_name == 'push' && needs.determine-version.outputs.create_release == 'false'
+    steps:
+      - name: Checkout tap
+        uses: actions/checkout@v4
+
+      - name: Check if we should run
+        id: check
+        run: |
+          # Skip if HEAD commit is from update-source-tarball job (prevents infinite loop)
+          if git log -1 --pretty=%B | grep -q "source tarball sha256 to"; then
+            echo "Skipping: HEAD commit is from update-source-tarball job"
+            echo "should_run=false" >> $GITHUB_OUTPUT
+          else
+            # Also skip if HEAD commit is from publish-bottles job (tag will be updated after release)
+            if git log -1 --pretty=%B | grep -q "Update to v.* with bottles"; then
+              echo "Skipping: HEAD commit is from publish-bottles job, tag was just updated"
+              echo "should_run=false" >> $GITHUB_OUTPUT
+            else
+              echo "should_run=true" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Set up Git
+        if: steps.check.outputs.should_run == 'true'
+        uses: Homebrew/actions/git-user-config@master
+        with:
+          username: "startergo"
+
+      - name: Update tag and calculate new sha256
+        if: steps.check.outputs.should_run == 'true'
+        run: |
+          # Extract version from formula URL (not the calculated next version)
+          VERSION=$(grep 'url.*archive/refs/tags/v' Formula/angle.rb 2>/dev/null | sed -E 's/.*v([0-9.]+)\.tar\.gz.*/\1/')
+
+          # Force update the existing tag to point to current HEAD
+          # This updates the tarball at refs/tags/v$VERSION to contain latest code
+          git tag -f "v$VERSION" HEAD
+          git push -f origin "v$VERSION"
+          echo "Updated tag v$VERSION to point to commit $(git rev-parse HEAD)"
+
+          # Wait a moment for GitHub to update the tarball
+          sleep 5
+
+          # Download the updated tarball and calculate its sha256
+          TARBALL_URL="https://github.com/startergo/homebrew-angle/archive/refs/tags/v${VERSION}.tar.gz"
+          echo "Downloading tarball from: $TARBALL_URL"
+          curl -L -o "angle-${VERSION}.tar.gz" "$TARBALL_URL"
+
+          # Calculate sha256
+          NEW_SHA256=$(sha256sum "angle-${VERSION}.tar.gz" | awk '{print $1}')
+          echo "New sha256: $NEW_SHA256"
+
+          # Update formula with new sha256
+          awk -v new_sha256="$NEW_SHA256" '
+            /^  sha256/ && !in_bottle {
+              print "  sha256 \"" new_sha256 "\""
+              next
+            }
+            /^  bottle do/ { in_bottle=1 }
+            /^  end/ && in_bottle { in_bottle=0 }
+            { print }
+          ' Formula/angle.rb > Formula/angle.rb.tmp
+          mv Formula/angle.rb.tmp Formula/angle.rb
+
+          # Show the updated formula for verification
+          echo "=== Updated formula ==="
+          head -15 Formula/angle.rb
+
+          # Commit and push formula
+          git add Formula/angle.rb
+          git commit -m "Update $VERSION source tarball sha256 to $NEW_SHA256"
+          git push origin master
+
+  build-and-publish-bottles:
+    needs: [determine-version, update-source-tarball]
+    runs-on: macos-latest
+    # Only run when create_release=true (workflow_dispatch or schedule)
+    # always() ensures this runs even if update-source-tarball was skipped
+    if: always() && needs.determine-version.outputs.create_release == 'true' && (needs.update-source-tarball.result == 'success' || needs.update-source-tarball.result == 'skipped')
+    env:
+      ARCH: arm64
+      VERSION: ${{ needs.determine-version.outputs.version }}
+      BUILD_DATE: ${{ needs.determine-version.outputs.version }}
+      SOURCE_VERSION: 1.0.0
+      ANGLE_COMMIT: ${{ needs.determine-version.outputs.angle_commit }}
+      GITHUB_WORKFLOW: "1"
+    steps:
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@master
+
+      - name: Set up Git
+        uses: Homebrew/actions/git-user-config@master
+        with:
+          username: "startergo"
+
+      - name: Checkout tap
+        uses: actions/checkout@v4
+
+      - name: Show formula state before update
+        run: |
+          echo "=== Formula before ==="
+          cat Formula/angle.rb
+
+      - name: Update formula to new version (uncommitted)
+        run: |
+          VERSION="${{ needs.determine-version.outputs.version }}"
+          COMMIT=$(git rev-parse HEAD)
+          echo "=== Updating formula: version $VERSION, url to commit $COMMIT ==="
+
+          # Add version line and update URL to point to current commit
+          # This ensures version and URL are in sync for correct bottle filename
+          awk -v new_version="$VERSION" -v commit="$COMMIT" '
+            BEGIN { inserted = 0 }
+            /^  url "https:\/\/github.com\/startergo\/homebrew-angle\/archive\/refs\/tags\// {
+              if (!inserted) {
+                print "  version \"" new_version "\""
+                inserted = 1
+              }
+              print "  url \"https://github.com/startergo/homebrew-angle/archive/" commit ".tar.gz\""
+              next
+            }
+            { print }
+          ' Formula/angle.rb > Formula/angle.rb.tmp
+          mv Formula/angle.rb.tmp Formula/angle.rb
+
+          echo "=== Formula updated (version $VERSION, url to commit) ==="
+          head -20 Formula/angle.rb
+          echo "=== Git diff ==="
+          git diff Formula/angle.rb || echo "No changes detected"
+
+          # Download commit tarball and calculate its sha256
+          # This is needed because the commit tarball has different content than the tag tarball
+          TARBALL_URL="https://github.com/startergo/homebrew-angle/archive/${COMMIT}.tar.gz"
+          echo "=== Downloading commit tarball to calculate sha256 ==="
+          echo "URL: $TARBALL_URL"
+          curl -L -o "commit.tar.gz" "$TARBALL_URL"
+          COMMIT_SHA256=$(shasum -a 256 commit.tar.gz | awk '{print $1}')
+          echo "Commit tarball sha256: $COMMIT_SHA256"
+
+          # Update formula with the commit tarball's sha256
+          awk -v new_sha256="$COMMIT_SHA256" '
+            BEGIN { in_bottle=0 }
+            /^  sha256/ && !in_bottle {
+              print "  sha256 \"" new_sha256 "\""
+              next
+            }
+            /^  bottle do/ { in_bottle=1 }
+            /^  end/ && in_bottle { in_bottle=0 }
+            { print }
+          ' Formula/angle.rb > Formula/angle.rb.tmp
+          mv Formula/angle.rb.tmp Formula/angle.rb
+
+          echo "=== Formula with updated sha256 ==="
+          head -20 Formula/angle.rb
+
+          # Save COMMIT_SHA256 for the Build bottle step
+          echo "$COMMIT_SHA256" > commit_sha256.txt
+
+      - name: Build bottle
+        run: |
+          set -x
+          # Set up tap directory
+          TAP_DIR="$(brew --repository)/Library/Taps/startergo/homebrew-angle"
+          echo "=== TAP_DIR: $TAP_DIR ==="
+          mkdir -p "$TAP_DIR/Formula"
+
+          # Check if tap is a symlink to current directory (GitHub Actions does this)
+          CURRENT_DIR="$(pwd)"
+          echo "=== CURRENT_DIR: $CURRENT_DIR ==="
+          if [ -L "$TAP_DIR" ] && [ "$(readlink -f "$TAP_DIR")" = "$(readlink -f "$CURRENT_DIR")" ]; then
+            echo "Tap is symlinked to current directory, skipping copy"
+          else
+            # Copy the formula to the tap
+            echo "Copying formula to tap..."
+            cp Formula/angle.rb "$TAP_DIR/Formula/" || true
+
+            # Copy patches directory to tap (needed by build.sh)
+            if [ -d "patches" ]; then
+              echo "Copying patches directory to tap..."
+              cp -r patches "$TAP_DIR/"
+              echo "Copied patches directory to tap"
+              ls -la patches/
+              ls -la "$TAP_DIR/patches/"
+            fi
+          fi
+
+          # Ensure no Casks directory exists
+          rm -rf "$TAP_DIR/Casks"
+
+          # Initialize tap as git repo if needed
+          # But skip if TAP_DIR is the same as current directory (symlink case)
+          if [ ! -d "$TAP_DIR/.git" ] && [ "$(realpath "$TAP_DIR")" != "$(realpath "$CURRENT_DIR")" ]; then
+            cd "$TAP_DIR"
+            git init
+            git checkout -b master
+            echo "# homebrew-angle tap" > README.md
+            git add README.md Formula/angle.rb
+            # Add patches if they exist
+            git add patches/ 2>/dev/null || true
+            git commit -m "Add angle formula"
+            cd -
+          fi
+
+          # Set env for local taps and uninstall any existing
+          export HOMEBREW_NO_INSTALL_FROM_API=1
+          brew uninstall angle --force 2>/dev/null || true
+
+          # Install gn from source (no bottle available)
+          echo "=== Installing gn... ==="
+          brew install startergo/gn/gn --build-from-source || true
+
+          # Unlink conflicting packages
+          brew unlink vulkan-headers 2>/dev/null || true
+
+          # Install from source with --build-bottle (required for bottle creation)
+          echo "=== Building angle from source... ==="
+          echo "=== This will apply patches if patches/ directory exists ==="
+          brew install --build-bottle startergo/angle/angle 2>&1 || true
+
+          # Display patch application status (build.sh creates this log)
+          if [ -f /tmp/angle-patch-status.txt ]; then
+            echo "=== PATCH APPLICATION STATUS ==="
+            cat /tmp/angle-patch-status.txt
+            echo "==================================="
+          else
+            echo "WARNING: No patch status log found at /tmp/angle-patch-status.txt"
+          fi
+
+          # Read SHA256 from file (build.sh writes it there since GITHUB_ENV isn't available in brew subprocess)
+          if [ -f /tmp/angle-source-sha256.txt ]; then
+            SOURCE_SHA256=$(cat /tmp/angle-source-sha256.txt)
+            echo "SOURCE_SHA256 from file: $SOURCE_SHA256"
+          else
+            echo "WARNING: SHA256 file not found at /tmp/angle-source-sha256.txt"
+          fi
+
+          # Read commit tarball SHA256 that was calculated in the previous step
+          if [ -f commit_sha256.txt ]; then
+            COMMIT_SHA256=$(cat commit_sha256.txt)
+            echo "COMMIT_SHA256 from file: $COMMIT_SHA256"
+          else
+            echo "ERROR: commit_sha256.txt not found! This should have been created in the previous step."
+            exit 1
+          fi
+
+          brew link --overwrite angle || true
+          echo "=== Angle build complete ==="
+          # Restore vulkan-headers for other workflows
+          brew link vulkan-headers 2>/dev/null || true
+
+          # Save commit tarball SHA256 for publish-bottles job
+          # This is the sha256 of the homebrew-angle commit tarball, not the ANGLE source
+          echo "$COMMIT_SHA256" > source_sha256.txt
+
+          # Create bottle with correct root_url (release will be created later)
+          brew bottle --json --root-url="https://github.com/startergo/homebrew-angle/releases/download/v${VERSION}" --force-core-tap "$TAP_DIR/Formula/angle.rb"
+
+          # Show bottle JSON filenames (brew bottle creates single-dash by default)
+          echo "=== Bottle JSON filenames ==="
+          cat *.json | jq '.[]?.bottle.tags[].filename' || true
+
+          echo "=== Files after brew bottle ==="
+          ls -la
+
+          # Copy tarball to safe location before merge (merge deletes it)
+          # Tap dir may be a symlink to current dir, so use a temp location
+          if ls *.tar.gz 2>/dev/null; then
+            mkdir -p /tmp/bottle-artifacts
+            cp -f *.tar.gz /tmp/bottle-artifacts/ 2>/dev/null || true
+          else
+            echo "WARNING: No tarball files found!"
+          fi
+
+          # Save formula state before merge (brew bottle --merge modifies it)
+          cp Formula/angle.rb Formula/angle.rb.before-merge
+
+          # Merge JSON into formula (writes to current dir, not tap)
+          brew bottle --merge --write *.json
+
+          echo "=== Files after brew bottle --merge ==="
+          ls -la
+
+          # Restore explicit version if it was removed by merge
+          if ! grep -q "^  version \"$VERSION\"" Formula/angle.rb; then
+            echo "Restoring explicit version line that was removed by brew bottle --merge"
+            # Add version line before sha256
+            awk -v new_version="$VERSION" '
+              /^  sha256/ && !in_bottle {
+                print "  version \"" new_version "\""
+              }
+              { print }
+            ' Formula/angle.rb > Formula/angle.rb.tmp
+            mv Formula/angle.rb.tmp Formula/angle.rb
+
+            # Amend the commit created by brew bottle --merge to include the version line
+            git add Formula/angle.rb
+            git commit --amend --no-edit
+          fi
+
+          # Show formula after merge
+          echo "=== Formula after brew bottle --merge ==="
+          head -20 Formula/angle.rb
+
+      - name: Upload source tarball
+        run: |
+          # Copy source tarball from tap directory
+          TAP_DIR="$(brew --repository)/Library/Taps/startergo/homebrew-angle"
+          if [ -f "$TAP_DIR/angle-${VERSION}.tar.gz" ]; then
+            cp "$TAP_DIR/angle-${VERSION}.tar.gz" .
+            echo "Found source tarball: angle-${VERSION}.tar.gz"
+            shasum -a 256 "angle-${VERSION}.tar.gz"
+          else
+            echo "Warning: Source tarball not found at $TAP_DIR/angle-${VERSION}.tar.gz"
+            ls -la "$TAP_DIR"/angle*.* 2>/dev/null || echo "No angle files found"
+          fi
+
+      - name: Copy bottle tarball from temp
+        run: |
+          # Copy tarball from temp location to workspace
+          cp /tmp/bottle-artifacts/*.tar.gz . 2>/dev/null || echo "No tarball found"
+
+      - name: Rename bottle to single-dash format
+        run: |
+          # brew bottle creates double-dash local_filename but JSON filename is single-dash
+          # We need to rename the tarball to match the JSON filename for upload
+          for json in *.json; do
+            SINGLE_DASH=$(jq -r '[.. | objects | select(.filename) | .filename] | join(",")' "$json" 2>/dev/null | head -1)
+            if [ -n "$SINGLE_DASH" ]; then
+              echo "Target filename from JSON: $SINGLE_DASH"
+              # Find the actual double-dash tarball
+              DOUBLE_DASH=$(ls angle--*.tar.gz 2>/dev/null | head -1)
+              if [ -n "$DOUBLE_DASH" ]; then
+                echo "Renaming $DOUBLE_DASH to $SINGLE_DASH"
+                mv "$DOUBLE_DASH" "$SINGLE_DASH"
+              fi
+            fi
+          done
+          ls -la *.tar.gz 2>/dev/null || echo "No tarballs found"
+
+      - name: Configure git credentials for push
+        run: |
+          git config --global url.https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/.insteadOf https://github.com/
+
+      - name: Update formula with version and tag URL (commit sha256, temporary)
+        run: |
+          # Read the commit tarball sha256 (temporary, will be replaced after tag creation)
+          if [ -f source_sha256.txt ]; then
+            SOURCE_SHA256=$(cat source_sha256.txt)
+            echo "Commit tarball sha256 (temporary): $SOURCE_SHA256"
+          else
+            echo "ERROR: source_sha256.txt not found!"
+            exit 1
+          fi
+
+          # Update formula with version, url, and commit tarball sha256 (temporary)
+          awk -v version="$VERSION" -v new_sha256="$SOURCE_SHA256" '
+            BEGIN { in_bottle=0; added_version=0; printed_version=0 }
+            /^  version / {
+              if (!printed_version) {
+                print "  version \"" version "\""
+                printed_version=1
+              }
+              added_version=1
+              next
+            }
+            /^  url "https:\/\/github.com\/startergo\/homebrew-angle\/archive\// {
+              if (!added_version) {
+                print "  version \"" version "\""
+                printed_version=1
+                added_version=1
+              }
+              # Convert from commit URL or tag URL to version tag URL
+              print "  url \"https://github.com/startergo/homebrew-angle/archive/refs/tags/v" version ".tar.gz\""
+              next
+            }
+            /^  sha256/ && !in_bottle {
+              print "  sha256 \"" new_sha256 "\""
+              next
+            }
+            /^  bottle do/ { in_bottle=1 }
+            /^  end/ && in_bottle { in_bottle=0 }
+            { print }
+          ' Formula/angle.rb > Formula/angle.rb.tmp
+          mv Formula/angle.rb.tmp Formula/angle.rb
+
+          echo "=== Formula with commit sha256 (temporary) ==="
+          head -20 Formula/angle.rb
+
+          # Commit and push formula
+          git add Formula/angle.rb
+          git commit -m "Update to v$VERSION with bottles"
+          git push origin master
+
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Create or update release with ANGLE commit info
+          gh release create "v$VERSION" \
+            --title "ANGLE v$VERSION" \
+            --notes "Built from ANGLE commit: $ANGLE_COMMIT
+
+          ### Bottles
+          $(ls *.tar.gz 2>/dev/null | sed 's/^/- /' || echo '')" \
+            --latest || true
+
+          # Upload bottle tarballs (single-dash format, exclude commit.tar.gz)
+          for tarball in angle-*.tar.gz; do
+            if [ -f "$tarball" ]; then
+              echo "Uploading $tarball"
+              gh release upload "v$VERSION" "$tarball" || true
+            fi
+          done
+
+      - name: Update formula with tag tarball sha256
+        run: |
+          # Release is created with tag, now calculate tag tarball sha256
+          TARBALL_URL="https://github.com/startergo/homebrew-angle/archive/refs/tags/v${VERSION}.tar.gz"
+          echo "Downloading tag tarball to calculate sha256: $TARBALL_URL"
+          curl -L -o "tag-tarball.tar.gz" "$TARBALL_URL"
+          TAG_SHA256=$(shasum -a 256 tag-tarball.tar.gz | awk '{print $1}')
+          echo "Tag tarball sha256: $TAG_SHA256"
+
+          # Update formula with tag tarball sha256
+          awk -v new_sha256="$TAG_SHA256" '
+            BEGIN { in_bottle=0 }
+            /^  sha256/ && !in_bottle {
+              print "  sha256 \"" new_sha256 "\""
+              next
+            }
+            /^  bottle do/ { in_bottle=1 }
+            /^  end/ && in_bottle { in_bottle=0 }
+            { print }
+          ' Formula/angle.rb > Formula/angle.rb.tmp
+          mv Formula/angle.rb.tmp Formula/angle.rb
+
+          echo "=== Formula with tag sha256 ==="
+          head -20 Formula/angle.rb
+
+          # Commit and push formula with correct sha256
+          git add Formula/angle.rb
+          git commit --amend --no-edit
+          git push -f origin master
