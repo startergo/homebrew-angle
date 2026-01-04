@@ -370,20 +370,6 @@ jobs:
           path: source_sha256.txt
           if-no-files-found: ignore
 
-  debug-publish:
-    needs: [determine-version, build-bottle]
-    runs-on: ubuntu-latest
-    # Always run this debug job to see why publish-bottles might be skipped
-    if: always()
-    steps:
-      - name: Debug outputs
-        run: |
-          echo "=== DEBUG OUTPUTS ==="
-          echo "create_release: '${{ needs.determine-version.outputs.create_release }}'"
-          echo "create_release == 'true': ${{ needs.determine-version.outputs.create_release == 'true' }}"
-          echo "create_release type: $(typeof '${{ needs.determine-version.outputs.create_release }}')"
-          echo "build-bottle result: ${{ needs.build-bottle.result }}"
-
   publish-bottles:
     needs: [determine-version, build-bottle]
     runs-on: ubuntu-latest
@@ -417,14 +403,8 @@ jobs:
 
       - name: Update formula with bottles and finalize
         run: |
-          # Debug: show what was downloaded
-          echo "=== Directory listing ==="
-          ls -laR
-          echo "=== Looking for sha256 file ==="
-          find . -name "*sha256*" -type f
-
           # Read source SHA256 from artifact
-          SOURCE_SHA256=$(cat sha256-artifact/source_sha256.txt 2>/dev/null) || true
+          SOURCE_SHA256=$(cat sha256-artifact/source_sha256.txt)
           if [ -z "$SOURCE_SHA256" ]; then
             echo "Error: SOURCE_SHA256 not found!"
             exit 1
