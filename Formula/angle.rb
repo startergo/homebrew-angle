@@ -4,7 +4,7 @@ class Angle < Formula
 
   bottle do
     root_url "https://github.com/startergo/homebrew-angle/releases/download/v1.0.7"
-    sha256 cellar: :any, arm64_sequoia: "af56d8b51e4aa8fa6410f0ac3a8a8a5be78c09b73de379e40fc7dff5736603f4"
+    sha256 cellar: :any, arm64_sequoia: "af56d8b51e4aa8fa6410f0ac3a8a8a5be78c09b73de379e40fc7dff5736603f4", filename: "angle--1.0.7.arm64_sequoia.bottle.tar.gz"
   end
   depends_on "startergo/gn/gn" => :build
   depends_on "ninja" => :build

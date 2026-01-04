@@ -397,6 +397,40 @@ jobs:
             git commit --amend --no-edit
           fi
 
+          # Restore filename fields in bottle block (brew bottle --merge may omit them)
+          # Extract filenames from JSON and add them to the formula
+          echo "=== Restoring filename fields to bottle block ==="
+          for json in *.json; do
+            # Extract all filenames from the JSON for this formula
+            filenames=$(jq -r '[.. | objects | select(.filename) | .filename] | join(",")' "$json" 2>/dev/null || echo "")
+            if [ -n "$filenames" ]; then
+              echo "Found filenames: $filenames"
+              # Add filename to each sha256 line in bottle block
+              awk -v filenames="$filenames" '
+                BEGIN { in_bottle=0; fn_split=split(filenames, fn_arr, ","); fn_idx=1 }
+                /^  bottle do/ { in_bottle=1 }
+                /^  end/ && in_bottle { in_bottle=0 }
+                /^  sha256/ && in_bottle {
+                  # Add filename field if we have one and this line doesn't already have it
+                  if (fn_idx <= fn_split && !/filename:/) {
+                    # Replace the closing quote with filename field
+                    sub(/"$/, ", filename: \"" fn_arr[fn_idx] "\"")
+                    fn_idx++
+                  }
+                }
+                { print }
+              ' Formula/angle.rb > Formula/angle.rb.tmp
+              mv Formula/angle.rb.tmp Formula/angle.rb
+            fi
+          done
+
+          echo "=== Formula after filename restoration ==="
+          head -20 Formula/angle.rb
+
+          # Amend the commit to include filename fields
+          git add Formula/angle.rb
+          git commit --amend --no-edit || true
+
       - name: Upload source tarball
         run: |
           # Copy source tarball from tap directory
