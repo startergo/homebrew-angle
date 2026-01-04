@@ -413,8 +413,22 @@ jobs:
           # Copy tarball from temp location to workspace
           cp /tmp/bottle-artifacts/*.tar.gz . 2>/dev/null || echo "No tarball found"
 
-      - name: Show bottle tarballs
+      - name: Rename bottle to single-dash format
         run: |
+          # brew bottle creates double-dash local_filename but JSON filename is single-dash
+          # We need to rename the tarball to match the JSON filename for upload
+          for json in *.json; do
+            SINGLE_DASH=$(jq -r '[.. | objects | select(.filename) | .filename] | join(",")' "$json" 2>/dev/null | head -1)
+            if [ -n "$SINGLE_DASH" ]; then
+              echo "Target filename from JSON: $SINGLE_DASH"
+              # Find the actual double-dash tarball
+              DOUBLE_DASH=$(ls angle--*.tar.gz 2>/dev/null | head -1)
+              if [ -n "$DOUBLE_DASH" ]; then
+                echo "Renaming $DOUBLE_DASH to $SINGLE_DASH"
+                mv "$DOUBLE_DASH" "$SINGLE_DASH"
+              fi
+            fi
+          done
           ls -la *.tar.gz 2>/dev/null || echo "No tarballs found"
 
       - name: Configure git credentials for push
