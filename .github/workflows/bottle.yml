@@ -91,17 +91,31 @@ jobs:
     runs-on: ubuntu-latest
     # Only run on push events (when create_release=false)
     # Also skip when we're building bottles (create_release=true)
+    # Skip if the HEAD commit is from this job (to prevent infinite loop)
     if: github.event_name == 'push' && needs.determine-version.outputs.create_release == 'false'
     steps:
       - name: Checkout tap
         uses: actions/checkout@v4
 
+      - name: Check if we should run
+        id: check
+        run: |
+          # Skip if HEAD commit is from update-source-tarball job
+          if git log -1 --pretty=%B | grep -q "source tarball sha256 to"; then
+            echo "Skipping: HEAD commit is from update-source-tarball job"
+            echo "should_run=false" >> $GITHUB_OUTPUT
+          else
+            echo "should_run=true" >> $GITHUB_OUTPUT
+          fi
+
       - name: Set up Git
+        if: steps.check.outputs.should_run == 'true'
         uses: Homebrew/actions/git-user-config@master
         with:
           username: "startergo"
 
       - name: Update tag and calculate new sha256
+        if: steps.check.outputs.should_run == 'true'
         run: |
           # Extract version from formula URL (not the calculated next version)
           VERSION=$(grep 'url.*archive/refs/tags/v' Formula/angle.rb 2>/dev/null | sed -E 's/.*v([0-9.]+)\.tar\.gz.*/\1/')
