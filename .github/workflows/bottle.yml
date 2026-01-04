@@ -165,7 +165,7 @@ jobs:
           git commit -m "Update $VERSION source tarball sha256 to $NEW_SHA256"
           git push origin master
 
-  build-bottle:
+  build-and-publish-bottles:
     needs: [determine-version, update-source-tarball]
     runs-on: macos-latest
     # Only run when create_release=true (workflow_dispatch or schedule)
@@ -444,99 +444,34 @@ jobs:
 
       - name: Copy bottle tarball from temp
         run: |
-          # Copy tarball from temp location to workspace for upload
+          # Copy tarball from temp location to workspace
           cp /tmp/bottle-artifacts/*.tar.gz . 2>/dev/null || echo "No tarball found"
 
-      - name: Upload bottle tarball
-        uses: actions/upload-artifact@v4
-        with:
-          name: bottle-arm64
-          path: "*.tar.gz"
-          if-no-files-found: ignore
+      - name: Rename bottle to correct double-dash filename
+        run: |
+          # Get the correct double-dash filename from the JSON
+          for json in *.json; do
+            CORRECT_FILENAME=$(jq -r '[.. | objects | select(.local_filename) | .local_filename] | join(",")' "$json" 2>/dev/null | head -1)
+            if [ -n "$CORRECT_FILENAME" ]; then
+              echo "Correct filename from JSON: $CORRECT_FILENAME"
+              # Find the actual tarball file (single-dash name)
+              ACTUAL_FILE=$(ls angle-*.tar.gz 2>/dev/null | head -1)
+              if [ -n "$ACTUAL_FILE" ]; then
+                echo "Renaming $ACTUAL_FILE to $CORRECT_FILENAME"
+                mv "$ACTUAL_FILE" "$CORRECT_FILENAME"
+              fi
+            fi
+          done
+          ls -la *.tar.gz 2>/dev/null || echo "No tarballs found"
 
-      - name: Upload bottle JSON artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: bottle-arm64-json
-          path: "*.json"
-          if-no-files-found: ignore
-
-      - name: Upload source SHA256 artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: source-sha256
-          path: source_sha256.txt
-          if-no-files-found: ignore
-
-  publish-bottles:
-    needs: [determine-version, build-bottle]
-    runs-on: ubuntu-latest
-    if: always() && needs.determine-version.outputs.create_release == 'true' && needs.build-bottle.result == 'success'
-    env:
-      VERSION: ${{ needs.determine-version.outputs.version }}
-      ANGLE_COMMIT: ${{ needs.determine-version.outputs.angle_commit }}
-    steps:
-      - name: Checkout tap
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: true
-
-      - name: Set up Homebrew
-        uses: Homebrew/actions/setup-homebrew@master
-
-      - name: Set up Git
-        uses: Homebrew/actions/git-user-config@master
-        with:
-          username: "startergo"
-
-      - name: Configure git credentials
+      - name: Configure git credentials for push
         run: |
           git config --global url.https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/.insteadOf https://github.com/
 
-      - name: Download all bottles
-        uses: actions/download-artifact@v4
-        with:
-          pattern: bottle-*
-          merge-multiple: true
-
-      - name: Download source SHA256
-        uses: actions/download-artifact@v4
-        with:
-          name: source-sha256
-          path: sha256-artifact
-
-      - name: Update formula with bottles and finalize
+      - name: Update formula with version and tag URL
         run: |
-          # Read source SHA256 from artifact
-          SOURCE_SHA256=$(cat sha256-artifact/source_sha256.txt)
-          if [ -z "$SOURCE_SHA256" ]; then
-            echo "Error: SOURCE_SHA256 not found!"
-            exit 1
-          fi
-          echo "Source SHA256: $SOURCE_SHA256"
-
-          # Show what we got
-          ls -la *.tar.gz *.json 2>/dev/null || true
-
-          # Display bottle info
-          if ls *.json 2>/dev/null; then
-            for json in *.json; do
-              echo "=== $json ==="
-              cat "$json"
-            done
-          fi
-
-          # Merge bottle JSON into formula
-          if ls *.json 2>/dev/null; then
-            echo "=== Bottle JSON (should have correct root_url and filenames) ==="
-            cat *.json | jq '.[]?.bottle | {root_url, filenames: [.tags[].filename]}' || true
-
-            brew bottle --merge --write --force-core-tap *.json
-            echo "=== Formula after bottle merge ==="
-            head -20 Formula/angle.rb
-          fi
-
-          # Update formula with version, url, and sha256 (bottle block is already correct from merge)
+          # Update formula with version, url, and sha256
+          # SOURCE_SHA256 is already set from earlier step
           awk -v version="$VERSION" -v new_sha256="$SOURCE_SHA256" '
             BEGIN { in_bottle=0; added_version=0 }
             /^  version / {
@@ -563,10 +498,10 @@ jobs:
           ' Formula/angle.rb > Formula/angle.rb.tmp
           mv Formula/angle.rb.tmp Formula/angle.rb
 
-          echo "=== Final formula (url v$VERSION, sha256 updated, bottle block updated) ==="
+          echo "=== Final formula ==="
           head -20 Formula/angle.rb
 
-          # Commit and push formula (tag will be created after release)
+          # Commit and push formula
           git add Formula/angle.rb
           git commit -m "Update to v$VERSION with bottles"
           git push origin master
@@ -599,4 +534,3 @@ jobs:
           git tag -f "v$VERSION" HEAD
           git push -f origin "v$VERSION"
           echo "=== Tag v$VERSION created successfully ==="
-
