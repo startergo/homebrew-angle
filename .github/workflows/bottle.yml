@@ -435,8 +435,9 @@ jobs:
             head -20 Formula/angle.rb
           fi
 
-          # Remove explicit version line, update url to new version, and add sha256
+          # Remove explicit version line, update url to new version, add sha256, and add root_url
           awk -v version="$VERSION" -v new_sha256="$SOURCE_SHA256" '
+            BEGIN { in_bottle=0; added_root_url=0 }
             /^  version / {
               next  # Remove explicit version line
             }
@@ -448,15 +449,22 @@ jobs:
               print "  sha256 \"" new_sha256 "\""
               next
             }
-            /^  bottle do/ { in_bottle=1 }
-            /^  end/ && in_bottle { in_bottle=0 }
+            /^  bottle do/ {
+              in_bottle=1
+              print
+              print "  root_url \"https://github.com/startergo/homebrew-angle/releases/download/v" version "\""
+              added_root_url=1
+              next
+            }
+            /^  root_url/ && in_bottle {
+              next  # Skip any existing root_url lines (we add our own)
+            }
+            /^  end/ && in_bottle {
+              in_bottle=0
+            }
             { print }
           ' Formula/angle.rb > Formula/angle.rb.tmp
           mv Formula/angle.rb.tmp Formula/angle.rb
-
-          # Update bottle root_url to new version
-          sed -i.bak "s|root_url \"https://github.com/startergo/homebrew-angle/releases/download/v[^\"]*\"|root_url \"https://github.com/startergo/homebrew-angle/releases/download/v$VERSION\"|" Formula/angle.rb
-          rm -f Formula/angle.rb.bak
 
           echo "=== Final formula (url v$VERSION, sha256 updated, bottle block updated) ==="
           head -20 Formula/angle.rb
