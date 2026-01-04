@@ -395,6 +395,14 @@ jobs:
       - name: Checkout tap
         uses: actions/checkout@v4
 
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@master
+
+      - name: Set up Git
+        uses: Homebrew/actions/git-user-config@master
+        with:
+          username: "startergo"
+
       - name: Download all bottles
         uses: actions/download-artifact@v4
         with:
@@ -406,14 +414,6 @@ jobs:
         with:
           name: source-sha256
           path: sha256-artifact
-
-      - name: Set up Homebrew
-        uses: Homebrew/actions/setup-homebrew@master
-
-      - name: Set up Git
-        uses: Homebrew/actions/git-user-config@master
-        with:
-          username: "startergo"
 
       - name: Update formula with bottles and finalize
         run: |
