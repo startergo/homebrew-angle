@@ -9,10 +9,9 @@ class Angle < Formula
   depends_on "startergo/gn/gn" => :build
   depends_on "ninja" => :build
   depends_on "llvm" => :build
-  version "1.0.2"
   version "1.0.3"
-  url "https://github.com/startergo/homebrew-angle/archive/2818a63f42206a5b48b72a9d4927598832b86d13.tar.gz"
-  sha256 "7b280874ff6b4184c26321325850f0234713221928991f1be22e047cdf668baf"
+  url "https://github.com/startergo/homebrew-angle/archive/refs/tags/v1.0.3.tar.gz"
+  sha256 "124d8712bba964f90bc69ccf0eff9e658755d4c413df7a11a8d6127bed46f78c"
   license "BSD-2-Clause"
 
   head "https://chromium.googlesource.com/angle/angle",
