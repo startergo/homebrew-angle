@@ -646,7 +646,7 @@ for lib in EGL GLESv2 GLESv1_CM; do
     /shared_library\("lib'"$lib"'"\)/ { in_target = 1 }
     in_target && /configs =/ && !target_modified {
       print $0
-      print "    configs += [ \":homebrew_install_name_'"$lib"'\" ]"
+      print "    configs += [ \":homebrew_bottle_config_lib'"$lib"'\" ]"
       target_modified = 1
       next
     }
