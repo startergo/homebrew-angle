@@ -576,74 +576,87 @@ entries = {
 EOF
 
 # =============================================================================
-# Inject Homebrew bottle config if provided via ANGLE_BUILD_CONFIG env var
+# Inject Homebrew bottle config for @rpath install_name
+# This ensures bottles work on any macOS system with proper dylib loading
 # =============================================================================
 
-if [ -n "$ANGLE_BUILD_CONFIG" ]; then
-  echo "=== ANGLE_BUILD_CONFIG detected, injecting into BUILD.gn ===" >&2
+echo "=== Injecting @rpath install_name config into BUILD.gn ===" >&2
 
-  # Write config to temp file for awk to read
-  echo "$ANGLE_BUILD_CONFIG" > /tmp/angle_build_config.txt
+# Create temp file with GN config blocks
+cat > /tmp/angle_build_config.txt << 'EOF'
+config("homebrew_bottle_config_libEGL") {
+  if (is_mac && !is_component_build) {
+    ldflags = [ "-Wl,-install_name,@rpath/libEGL.dylib" ]
+  }
+}
+config("homebrew_bottle_config_libGLESv2") {
+  if (is_mac && !is_component_build) {
+    ldflags = [ "-Wl,-install_name,@rpath/libGLESv2.dylib" ]
+  }
+}
+config("homebrew_bottle_config_libGLESv1_CM") {
+  if (is_mac && !is_component_build) {
+    ldflags = [ "-Wl,-install_name,@rpath/libGLESv1_CM.dylib" ]
+  }
+}
+EOF
 
-  # Use awk to insert config before shared_library_public_config in BUILD.gn
-  awk '
-    /config\("shared_library_public_config"\)/ {
-      while ((getline line < "/tmp/angle_build_config.txt") > 0) {
-        print line
-      }
-      close("/tmp/angle_build_config.txt")
-      print ""
+# Use awk to insert config before shared_library_public_config in BUILD.gn
+awk '
+  /config\("shared_library_public_config"\)/ {
+    while ((getline line < "/tmp/angle_build_config.txt") > 0) {
+      print line
+    }
+    close("/tmp/angle_build_config.txt")
+    print ""
+  }
+  { print }
+' BUILD.gn > BUILD.gn.tmp && mv BUILD.gn.tmp BUILD.gn
+rm -f /tmp/angle_build_config.txt
+echo "Config injected into BUILD.gn" >&2
+
+# Add homebrew_bottle_config to set_defaults (only headerpad, not install_names)
+awk '
+  /set_defaults\("angle_shared_library"\)/ {
+    in_defaults = 1
+  }
+  in_defaults && /configs =/ && !defaults_modified {
+    print $0
+    print "  # Homebrew bottle: add headerpad config only"
+    print "  if (is_mac && !is_component_build) {"
+    print "    configs += [ \":homebrew_bottle_config\" ]"
+    print "  }"
+    defaults_modified = 1
+    next
+  }
+  in_defaults && /\}/ && defaults_in_body {
+    in_defaults = 0
+    defaults_in_body = 0
+  }
+  in_defaults && /\}/ {
+    defaults_in_body = 1
+  }
+  { print }
+' gni/angle.gni > gni/angle.gni.tmp && mv gni/angle.gni.tmp gni/angle.gni
+echo "set_defaults updated in gni/angle.gni" >&2
+
+# Add each install_name config to its respective library target in BUILD.gn
+for lib in EGL GLESv2 GLESv1_CM; do
+  awk -v lib="$lib" '
+    /shared_library\("lib'"$lib"'"\)/ { in_target = 1 }
+    in_target && /configs =/ && !target_modified {
+      print $0
+      print "    configs += [ \":homebrew_install_name_'"$lib"'\" ]"
+      target_modified = 1
+      next
+    }
+    in_target && /\}/ {
+      in_target = 0
     }
     { print }
   ' BUILD.gn > BUILD.gn.tmp && mv BUILD.gn.tmp BUILD.gn
-  rm -f /tmp/angle_build_config.txt
-  echo "Config injected into BUILD.gn" >&2
-
-  # Add homebrew_bottle_config to set_defaults (only headerpad, not install_names)
-  awk '
-    /set_defaults\("angle_shared_library"\)/ {
-      in_defaults = 1
-    }
-    in_defaults && /configs =/ && !defaults_modified {
-      print $0
-      print "  # Homebrew bottle: add headerpad config only"
-      print "  if (is_mac && !is_component_build) {"
-      print "    configs += [ \":homebrew_bottle_config\" ]"
-      print "  }"
-      defaults_modified = 1
-      next
-    }
-    in_defaults && /\}/ && defaults_in_body {
-      in_defaults = 0
-      defaults_in_body = 0
-    }
-    in_defaults && /\}/ {
-      defaults_in_body = 1
-    }
-    { print }
-  ' gni/angle.gni > gni/angle.gni.tmp && mv gni/angle.gni.tmp gni/angle.gni
-  echo "set_defaults updated in gni/angle.gni" >&2
-
-  # Add each install_name config to its respective library target in BUILD.gn
-  for lib in EGL GLESv2 GLESv1_CM; do
-    awk -v lib="$lib" '
-      /shared_library\("lib'"$lib"'"\)/ { in_target = 1 }
-      in_target && /configs =/ && !target_modified {
-        print $0
-        print "    configs += [ \":homebrew_install_name_'"$lib"'\" ]"
-        target_modified = 1
-        next
-      }
-      in_target && /\}/ {
-        in_target = 0
-      }
-      { print }
-    ' BUILD.gn > BUILD.gn.tmp && mv BUILD.gn.tmp BUILD.gn
-  done
-  echo "install_name configs added to library targets in BUILD.gn" >&2
-else
-  echo "=== WARNING: ANGLE_BUILD_CONFIG not set ===" >&2
-fi
+done
+echo "install_name configs added to library targets in BUILD.gn" >&2
 
 cd ..
 

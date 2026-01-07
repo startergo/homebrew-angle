@@ -21,27 +21,8 @@ class Angle < Formula
     arch = Hardware::CPU.arm? ? "arm64" : "x64"
     angle_dir = "angle-#{arch}"
 
-    # Inject @rpath install_name config for bottle compatibility
-    # Using @rpath avoids headerpad overflow and improves portability
-    angle_build_config = <<~EOS
-      config("homebrew_bottle_config_libEGL") {
-        if (is_mac && !is_component_build) {
-          ldflags = [ "-Wl,-install_name,@rpath/libEGL.dylib" ]
-        }
-      }
-      config("homebrew_bottle_config_libGLESv2") {
-        if (is_mac && !is_component_build) {
-          ldflags = [ "-Wl,-install_name,@rpath/libGLESv2.dylib" ]
-        }
-      }
-      config("homebrew_bottle_config_libGLESv1_CM") {
-        if (is_mac && !is_component_build) {
-          ldflags = [ "-Wl,-install_name,@rpath/libGLESv1_CM.dylib" ]
-        }
-      }
-    EOS
-
-    ENV["ANGLE_BUILD_CONFIG"] = angle_build_config
+    # build.sh handles @rpath install_name configuration internally
+    # for both bottle builds and local source builds
     system "./build.sh", arch
 
     # Copy dylibs directly to preserve install_name set during build
