@@ -615,31 +615,6 @@ awk '
 rm -f /tmp/angle_build_config.txt
 echo "Config injected into BUILD.gn" >&2
 
-# Add homebrew_bottle_config to set_defaults (only headerpad, not install_names)
-awk '
-  /set_defaults\("angle_shared_library"\)/ {
-    in_defaults = 1
-  }
-  in_defaults && /configs =/ && !defaults_modified {
-    print $0
-    print "  # Homebrew bottle: add headerpad config only"
-    print "  if (is_mac && !is_component_build) {"
-    print "    configs += [ \":homebrew_bottle_config\" ]"
-    print "  }"
-    defaults_modified = 1
-    next
-  }
-  in_defaults && /\}/ && defaults_in_body {
-    in_defaults = 0
-    defaults_in_body = 0
-  }
-  in_defaults && /\}/ {
-    defaults_in_body = 1
-  }
-  { print }
-' gni/angle.gni > gni/angle.gni.tmp && mv gni/angle.gni.tmp gni/angle.gni
-echo "set_defaults updated in gni/angle.gni" >&2
-
 # Add each install_name config to its respective library target in BUILD.gn
 for lib in EGL GLESv2 GLESv1_CM; do
   awk -v lib="$lib" '
