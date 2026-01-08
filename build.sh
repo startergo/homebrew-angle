@@ -616,17 +616,33 @@ rm -f /tmp/angle_build_config.txt
 echo "Config injected into BUILD.gn" >&2
 
 # Add each install_name config to its respective library target in BUILD.gn
+# Each library uses a different template name in ANGLE's BUILD.gn
 for lib in EGL GLESv2 GLESv1_CM; do
-  awk -v lib="$lib" '
-    /angle_shared_library\("lib'"$lib"'"\)/ { in_target = 1 }
-    in_target && /configs =/ && !target_modified {
+  # Set target name for this library
+  case "$lib" in
+    EGL)
+      target='libEGL_shared_template("libEGL")'
+      ;;
+    GLESv2)
+      target='angle_libGLESv2("libGLESv2")'
+      ;;
+    GLESv1_CM)
+      target='angle_shared_library("libGLESv1_CM")'
+      ;;
+  esac
+
+  awk -v lib="$lib" -v target="$target" '
+    index($0, target) { in_target = 1 }
+    in_target && /\{/ { in_target_body = 1 }
+    in_target && in_target_body && !target_modified && /^[[:space:]]+[a-zA-Z_]/ {
+      print "  configs = [ \":homebrew_bottle_config_lib'"$lib"'\" ]"
       print $0
-      print "    configs += [ \":homebrew_bottle_config_lib'"$lib"'\" ]"
       target_modified = 1
       next
     }
     in_target && /\}/ {
       in_target = 0
+      in_target_body = 0
     }
     { print }
   ' BUILD.gn > BUILD.gn.tmp && mv BUILD.gn.tmp BUILD.gn
