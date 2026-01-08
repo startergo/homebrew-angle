@@ -3,15 +3,16 @@ class Angle < Formula
   homepage "https://chromium.googlesource.com/angle/angle"
 
   bottle do
-    root_url "https://github.com/startergo/homebrew-angle/releases/download/v1.0.4"
-    sha256 cellar: :any, arm64_sequoia: "005c5504569d6c10a0edb594a36b3b4289eb1837dde18f69c3111eb1b1bef963"
+    root_url "https://github.com/startergo/homebrew-angle/releases/download/v1.0.5"
+    sha256 cellar: :any, arm64_sequoia: "9528c8f6517f553def7f43c0851c11e62ff9855d7dea85f14fefc2c20101bfeb"
   end
   depends_on "startergo/gn/gn" => :build
   depends_on "ninja" => :build
   depends_on "llvm" => :build
   version "1.0.4"
-  url "https://github.com/startergo/homebrew-angle/archive/refs/tags/v1.0.4.tar.gz"
-  sha256 "c025dc76f2487c3c900a68c8739ab6bf9d924e129a96c428b01d216902c26679"
+  version "1.0.5"
+  url "https://github.com/startergo/homebrew-angle/archive/c9a1227c6d0a5fa9000d54e19b10c4ae142c9195.tar.gz"
+  sha256 "34efcb86ec6d917e1d948aa401cd30ab8e7765df7a9a4d5b949124eef95c9ae2"
   license "BSD-2-Clause"
 
   head "https://chromium.googlesource.com/angle/angle",
