@@ -615,8 +615,61 @@ awk '
 rm -f /tmp/angle_build_config.txt
 echo "Config injected into BUILD.gn" >&2
 
-# Add each install_name config to its respective library target in BUILD.gn
-# Each library uses a different template name in ANGLE's BUILD.gn
+# Modify templates to forward configs from invoker, then add configs to invocations
+
+# 1. Modify libEGL_shared_template to forward configs to libEGL_template
+awk '
+  /template\("libEGL_shared_template"\)/ { in_template = 1 }
+  in_template && /libEGL_template\(target_name\) \{/ { in_call = 1 }
+  in_call && !forward_added && /\{/ {
+    print $0
+    print "    if (defined(invoker.configs)) {"
+    print "      configs += invoker.configs"
+    print "    }"
+    forward_added = 1
+    next
+  }
+  in_template && /^\}/ && in_template_body {
+    in_template = 0
+    in_template_body = 0
+  }
+  in_template && /\{/ && !in_call {
+    in_template_body = 1
+  }
+  in_call && /\{/ {
+    in_call = 0
+  }
+  { print }
+' BUILD.gn > BUILD.gn.tmp && mv BUILD.gn.tmp BUILD.gn
+echo "Modified libEGL_shared_template to forward configs" >&2
+
+# 2. Modify angle_libGLESv2 template to forward configs
+awk '
+  /template\("angle_libGLESv2"\)/ { in_template = 1 }
+  in_template && /angle_shared_library\(target_name\) \{/ { in_call = 1 }
+  in_call && !configs_added && /\{/ {
+    print $0
+    print "    if (defined(invoker.configs)) {"
+    print "      configs += invoker.configs"
+    print "    }"
+    configs_added = 1
+    next
+  }
+  in_template && /^\}/ && in_template_body {
+    in_template = 0
+    in_template_body = 0
+  }
+  in_template && /\{/ && !in_call {
+    in_template_body = 1
+  }
+  in_call && /\{/ {
+    in_call = 0
+  }
+  { print }
+' BUILD.gn > BUILD.gn.tmp && mv BUILD.gn.tmp BUILD.gn
+echo "Modified angle_libGLESv2 template to forward configs" >&2
+
+# 3. Add configs to library target invocations
 for lib in EGL GLESv2 GLESv1_CM; do
   # Set target name for this library
   case "$lib" in
