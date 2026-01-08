@@ -601,7 +601,7 @@ awk '
     # After configs += [...] closes, add our ldflags
     print $0
     print "    if (is_apple) {"
-    print "      ldflags = [ \"-Wl,-install_name,@rpath/libGLESv2.dylib\" ]"
+    print "      ldflags = [ \"-Wl,-headerpad,-install_name\", \"-Wl,-install_name,@rpath/libGLESv2.dylib\" ]"
     print "    }"
     modified = 1
     next
@@ -632,7 +632,7 @@ awk '
     # After data_deps = [...] closes, add our ldflags
     print $0
     print "    if (is_apple) {"
-    print "      ldflags = [ \"-Wl,-install_name,@rpath/libEGL.dylib\" ]"
+    print "      ldflags = [ \"-Wl,-headerpad,-install_name\", \"-Wl,-install_name,@rpath/libEGL.dylib\" ]"
     print "    }"
     modified = 1
     next
@@ -658,7 +658,7 @@ awk '
     # After configs += [...] closes, add our ldflags
     print $0
     print "  if (is_apple) {"
-    print "    ldflags = [ \"-Wl,-install_name,@rpath/libGLESv1_CM.dylib\" ]"
+    print "    ldflags = [ \"-Wl,-headerpad,-install_name\", \"-Wl,-install_name,@rpath/libGLESv1_CM.dylib\" ]"
     print "  }"
     modified = 1
     next

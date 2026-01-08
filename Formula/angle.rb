@@ -42,6 +42,19 @@ class Angle < Formula
     (share/"angle").install "#{angle_dir}/commit.txt"
   end
 
+  def post_install
+    # Restore @rpath install_names that Homebrew may have changed
+    # Homebrew changes @rpath/libX.dylib to /opt/homebrew/opt/angle/lib/libX.dylib
+    # We need to restore them for proper dylib loading
+    Dir[lib/"*.dylib"].each do |dylib|
+      current_name = Utils.popen_read("otool", "-D", dylib).strip.split("\n").last
+      if current_name.include?("/opt/homebrew/opt/angle/lib/")
+        basename_name = File.basename(dylib)
+        system "install_name_tool", "-id", "@rpath/#{basename_name}", dylib
+      end
+    end
+  end
+
   test do
     # Test that pkg-config files are valid
     system "pkg-config", "--exists", "egl"
