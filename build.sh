@@ -128,7 +128,8 @@ git -C angle checkout --force FETCH_HEAD || exit 1
 PATCH_DIR="$(dirname "$0")/patches"
 
 # Create a log file that survives even if output is suppressed
-PATCH_LOG="$PWD/angle-patch-status.txt"
+# Use script directory instead of PWD for consistency across build environments
+PATCH_LOG="$(dirname "$0")/angle-patch-status.txt"
 echo "=== ANGLE PATCH APPLICATION LOG ===" > "$PATCH_LOG"
 echo "Looking for patches in: $PATCH_DIR" >> "$PATCH_LOG"
 
@@ -824,7 +825,7 @@ if [ -n "$GITHUB_WORKFLOW" ]; then
     SHA256=$(shasum -a 256 "angle-${VERSION}.tar.gz" | awk '{print $1}')
     echo "SHA256: $SHA256"
     # Write to file for reliable capture (brew may suppress stdout, and GITHUB_ENV is not available in brew subprocess)
-    echo "$SHA256" > "$PWD/angle-source-sha256.txt"
-    echo "SHA256 written to $PWD/angle-source-sha256.txt"
+    echo "$SHA256" > "$(dirname "$0")/angle-source-sha256.txt"
+    echo "SHA256 written to $(dirname "$0")/angle-source-sha256.txt"
   fi
 fi
