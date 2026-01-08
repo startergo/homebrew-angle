@@ -699,6 +699,16 @@ for lib in EGL GLESv2 GLESv1_CM; do
       in_configs = 0
       next
     }
+    # Fallback: if no configs found and we see first assignment, add configs before it
+    # Use configs += to avoid overwriting template's configs
+    in_target && in_target_body && !in_configs && !target_modified && /^[[:space:]]+[a-zA-Z_]/ {
+      match(\$0, /^[[:space:]]*/)
+      indent = substr(\$0, RSTART, RLENGTH)
+      print indent "configs += [ \":homebrew_bottle_config_lib" lib "\" ]"
+      print \$0
+      target_modified = 1
+      next
+    }
     in_target && /^\\}/ {
       in_target = 0
       in_target_body = 0
