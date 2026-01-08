@@ -684,21 +684,31 @@ for lib in EGL GLESv2 GLESv1_CM; do
       ;;
   esac
 
-  awk -v lib="$lib" -v target="$target" '
-    index($0, target) { in_target = 1 }
-    in_target && /\{/ { in_target_body = 1 }
-    in_target && in_target_body && !target_modified && /^[[:space:]]+[a-zA-Z_]/ {
-      print "  configs = [ \":homebrew_bottle_config_lib'"$lib"'\" ]"
-      print $0
+  cat > /tmp/angle_add_config.awk << AWKEOF
+    index(\$0, target) { in_target = 1 }
+    in_target && /\\{\$/ { in_target_body = 1 }
+    in_target && in_target_body && /configs/ && !in_configs && !target_modified {
+      in_configs = 1
+    }
+    in_configs && /^[[:space:]]*\]/ && !/\\[/ {
+      match(\$0, /^[[:space:]]*/)
+      indent = substr(\$0, RSTART, RLENGTH)
+      print \$0
+      print indent "configs += [ \":homebrew_bottle_config_lib" lib "\" ]"
       target_modified = 1
+      in_configs = 0
       next
     }
-    in_target && /\}/ {
+    in_target && /^\\}/ {
       in_target = 0
       in_target_body = 0
+      in_configs = 0
     }
     { print }
-  ' BUILD.gn > BUILD.gn.tmp && mv BUILD.gn.tmp BUILD.gn
+AWKEOF
+
+  awk -f /tmp/angle_add_config.awk -v target="$target" -v lib="$lib" BUILD.gn > BUILD.gn.tmp && mv BUILD.gn.tmp BUILD.gn
+  rm -f /tmp/angle_add_config.awk
 done
 echo "install_name configs added to library targets in BUILD.gn" >&2
 
