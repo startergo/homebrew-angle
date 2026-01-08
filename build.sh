@@ -590,17 +590,17 @@ echo "=== Injecting @rpath install_name config into BUILD.gn ===" >&2
 CONFIG_FILE="${TMPDIR:-/tmp}/angle_build_config.txt"
 cat > "$CONFIG_FILE" << 'EOF'
 config("homebrew_bottle_config_libEGL") {
-  if (is_mac && !is_component_build) {
+  if (is_mac) {
     ldflags = [ "-Wl,-install_name,@rpath/libEGL.dylib" ]
   }
 }
 config("homebrew_bottle_config_libGLESv2") {
-  if (is_mac && !is_component_build) {
+  if (is_mac) {
     ldflags = [ "-Wl,-install_name,@rpath/libGLESv2.dylib" ]
   }
 }
 config("homebrew_bottle_config_libGLESv1_CM") {
-  if (is_mac && !is_component_build) {
+  if (is_mac) {
     ldflags = [ "-Wl,-install_name,@rpath/libGLESv1_CM.dylib" ]
   }
 }
