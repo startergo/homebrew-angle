@@ -311,21 +311,21 @@ jobs:
           echo "=== This will apply patches if patches/ directory exists ==="
           brew install --build-bottle startergo/angle/angle 2>&1 || true
 
-          # Display patch application status (build.sh creates this log)
-          if [ -f /tmp/angle-patch-status.txt ]; then
+          # Display patch application status (build.sh creates this log in tap dir)
+          if [ -f "$TAP_DIR/angle-patch-status.txt" ]; then
             echo "=== PATCH APPLICATION STATUS ==="
-            cat /tmp/angle-patch-status.txt
+            cat "$TAP_DIR/angle-patch-status.txt"
             echo "==================================="
           else
-            echo "WARNING: No patch status log found at /tmp/angle-patch-status.txt"
+            echo "WARNING: No patch status log found at $TAP_DIR/angle-patch-status.txt"
           fi
 
           # Read SHA256 from file (build.sh writes it there since GITHUB_ENV isn't available in brew subprocess)
-          if [ -f /tmp/angle-source-sha256.txt ]; then
-            SOURCE_SHA256=$(cat /tmp/angle-source-sha256.txt)
+          if [ -f "$TAP_DIR/angle-source-sha256.txt" ]; then
+            SOURCE_SHA256=$(cat "$TAP_DIR/angle-source-sha256.txt")
             echo "SOURCE_SHA256 from file: $SOURCE_SHA256"
           else
-            echo "WARNING: SHA256 file not found at /tmp/angle-source-sha256.txt"
+            echo "WARNING: SHA256 file not found at $TAP_DIR/angle-source-sha256.txt"
           fi
 
           # Read commit tarball SHA256 that was calculated in the previous step
