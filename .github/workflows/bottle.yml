@@ -379,7 +379,8 @@ jobs:
           echo "$COMMIT_SHA256" > source_sha256.txt
 
           # Create bottle with correct root_url (release will be created later)
-          brew bottle --json --root-url="https://github.com/startergo/homebrew-angle/releases/download/v${VERSION}" --force-core-tap "$TAP_DIR/Formula/angle.rb"
+          # Use --skip-relocation to preserve install_names (prevents @@HOMEBREW_PREFIX@@ replacement)
+          brew bottle --json --root-url="https://github.com/startergo/homebrew-angle/releases/download/v${VERSION}" --force-core-tap --skip-relocation "$TAP_DIR/Formula/angle.rb"
 
           # Show bottle JSON filenames (brew bottle creates single-dash by default)
           echo "=== Bottle JSON filenames ==="
