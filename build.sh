@@ -150,8 +150,8 @@ if [ -f "$PATCH_DIR/angle-changes-main.patch" ]; then
   echo "=== PATCH FILE FOUND! Applying... ===" >&2
   echo "PATCH FILE FOUND! Applying..." >> "$PATCH_LOG"
   echo "=== Patch file: $PATCH_DIR/angle-changes-main.patch ===" >&2
-  if git -C angle apply --check ../patches/angle-changes-main.patch 2>/dev/null; then
-    git -C angle apply ../patches/angle-changes-main.patch || {
+  if git -C angle apply --check "$PATCH_DIR/angle-changes-main.patch" 2>/dev/null; then
+    git -C angle apply "$PATCH_DIR/angle-changes-main.patch" || {
       echo "=== ERROR: Failed to apply patches ===" >&2
       echo "ERROR: Failed to apply patches" >> "$PATCH_LOG"
       exit 1

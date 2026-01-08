@@ -299,10 +299,6 @@ jobs:
           export HOMEBREW_NO_INSTALL_FROM_API=1
           brew uninstall angle --force 2>/dev/null || true
 
-          # Set PATCH_DIR to point to checkout (patches are in the checkout, not in the extracted source)
-          export PATCH_DIR="$(pwd)/patches"
-          echo "=== Setting PATCH_DIR: $PATCH_DIR ==="
-
           # Install gn from source (no bottle available)
           echo "=== Installing gn... ==="
           brew install startergo/gn/gn --build-from-source || true
