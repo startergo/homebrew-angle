@@ -618,7 +618,7 @@ echo "Config injected into BUILD.gn" >&2
 # Add each install_name config to its respective library target in BUILD.gn
 for lib in EGL GLESv2 GLESv1_CM; do
   awk -v lib="$lib" '
-    /shared_library\("lib'"$lib"'"\)/ { in_target = 1 }
+    /angle_shared_library\("lib'"$lib"'"\)/ { in_target = 1 }
     in_target && /configs =/ && !target_modified {
       print $0
       print "    configs += [ \":homebrew_bottle_config_lib'"$lib"'\" ]"
