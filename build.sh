@@ -128,8 +128,8 @@ git -C angle checkout --force FETCH_HEAD || exit 1
 PATCH_DIR="$(dirname "$0")/patches"
 
 # Create a log file that survives even if output is suppressed
-# Use script directory instead of PWD for consistency across build environments
-PATCH_LOG="$(dirname "$0")/angle-patch-status.txt"
+# Use $TMPDIR for temp files (mapped to $RUNNER_TEMP in GitHub Actions)
+PATCH_LOG="${TMPDIR:-/tmp}/angle-patch-status.txt"
 echo "=== ANGLE PATCH APPLICATION LOG ===" > "$PATCH_LOG"
 echo "Looking for patches in: $PATCH_DIR" >> "$PATCH_LOG"
 
@@ -585,8 +585,8 @@ EOF
 
 echo "=== Injecting @rpath install_name config into BUILD.gn ===" >&2
 
-# Create temp file with GN config blocks (use $PWD for jailed environments)
-CONFIG_FILE="$PWD/angle_build_config.txt"
+# Create temp file with GN config blocks (use $TMPDIR for GitHub Actions)
+CONFIG_FILE="${TMPDIR:-/tmp}/angle_build_config.txt"
 cat > "$CONFIG_FILE" << 'EOF'
 config("homebrew_bottle_config_libEGL") {
   if (is_mac && !is_component_build) {
@@ -699,7 +699,7 @@ awk '
 echo "Modified angle_libGLESv2 template to forward configs" >&2
 
 # 3. Add configs to library target invocations
-AWK_SCRIPT="$PWD/angle_add_config.awk"
+AWK_SCRIPT="${TMPDIR:-/tmp}/angle_add_config.awk"
 for lib in EGL GLESv2 GLESv1_CM; do
   # Set target name for this library
   case "$lib" in
@@ -825,7 +825,7 @@ if [ -n "$GITHUB_WORKFLOW" ]; then
     SHA256=$(shasum -a 256 "angle-${VERSION}.tar.gz" | awk '{print $1}')
     echo "SHA256: $SHA256"
     # Write to file for reliable capture (brew may suppress stdout, and GITHUB_ENV is not available in brew subprocess)
-    echo "$SHA256" > "$(dirname "$0")/angle-source-sha256.txt"
-    echo "SHA256 written to $(dirname "$0")/angle-source-sha256.txt"
+    echo "$SHA256" > "${TMPDIR:-/tmp}/angle-source-sha256.txt"
+    echo "SHA256 written to ${TMPDIR:-/tmp}/angle-source-sha256.txt"
   fi
 fi
