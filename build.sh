@@ -580,58 +580,97 @@ EOF
 # This ensures bottles work on any macOS system with proper dylib loading
 # =============================================================================
 
-echo "=== Injecting @rpath install_name config into BUILD.gn ===" >&2
+echo "=== Injecting @rpath install_name into BUILD.gn ===" >&2
 
-# Create temp file with GN config blocks
-cat > /tmp/angle_build_config.txt << 'EOF'
-config("homebrew_bottle_config_libEGL") {
-  if (is_mac) {
-    ldflags = [ "-Wl,-install_name,@rpath/libEGL.dylib" ]
-  }
-}
-config("homebrew_bottle_config_libGLESv2") {
-  if (is_mac) {
-    ldflags = [ "-Wl,-install_name,@rpath/libGLESv2.dylib" ]
-  }
-}
-config("homebrew_bottle_config_libGLESv1_CM") {
-  if (is_mac) {
-    ldflags = [ "-Wl,-install_name,@rpath/libGLESv1_CM.dylib" ]
-  }
-}
-EOF
-
-# Use awk to insert config before shared_library_public_config in BUILD.gn
+# For angle_libGLESv2 template: add install_name ldflags after configs += block
+# This template contains: angle_shared_library(target_name) { configs += [...] }
+# We need to add ldflags after the configs += section
 awk '
-  /config\("shared_library_public_config"\)/ {
-    while ((getline line < "/tmp/angle_build_config.txt") > 0) {
-      print line
-    }
-    close("/tmp/angle_build_config.txt")
-    print ""
+  /template\("angle_libGLESv2"\)/ {
+    in_template = 1
+    template_start = NR
+  }
+  in_template && /angle_shared_library\(target_name\)/ {
+    in_shared_lib = 1
+  }
+  in_template && in_shared_lib && /configs \+= \[/ {
+    in_configs = 1
+  }
+  in_template && in_shared_lib && in_configs && /\]/ {
+    in_configs = 0
+    # After configs += [...] closes, add our ldflags
+    print $0
+    print "    if (is_apple) {"
+    print "      ldflags = [ \"-Wl,-install_name,@rpath/libGLESv2.dylib\" ]"
+    print "    }"
+    modified = 1
+    next
+  }
+  in_template && modified && /^}/ && in_shared_lib {
+    in_template = 0
+    in_shared_lib = 0
+    modified = 0
   }
   { print }
 ' BUILD.gn > BUILD.gn.tmp && mv BUILD.gn.tmp BUILD.gn
-rm -f /tmp/angle_build_config.txt
-echo "Config injected into BUILD.gn" >&2
 
-# Add each install_name config to its respective library target in BUILD.gn
-for lib in EGL GLESv2 GLESv1_CM; do
-  awk -v lib="$lib" '
-    /angle_shared_library\("lib'"$lib"'"\)/ { in_target = 1 }
-    in_target && /configs =/ && !target_modified {
-      print $0
-      print "    configs += [ \":homebrew_bottle_config_lib'"$lib"'\" ]"
-      target_modified = 1
-      next
-    }
-    in_target && /\}/ {
-      in_target = 0
-    }
-    { print }
-  ' BUILD.gn > BUILD.gn.tmp && mv BUILD.gn.tmp BUILD.gn
-done
-echo "install_name configs added to library targets in BUILD.gn" >&2
+# For libEGL_shared_template: add install_name ldflags at end of libEGL_template block
+# This template contains: libEGL_template(target_name) { ... data_deps = [...] }
+# We need to add ldflags after the data_deps section
+awk '
+  /template\("libEGL_shared_template"\)/ {
+    in_template = 1
+  }
+  in_template && /libEGL_template\(target_name\)/ {
+    in_libegl_template = 1
+  }
+  in_template && in_libegl_template && /data_deps = \[/ {
+    in_data_deps = 1
+  }
+  in_template && in_libegl_template && in_data_deps && /\]/ {
+    in_data_deps = 0
+    # After data_deps = [...] closes, add our ldflags
+    print $0
+    print "    if (is_apple) {"
+    print "      ldflags = [ \"-Wl,-install_name,@rpath/libEGL.dylib\" ]"
+    print "    }"
+    modified = 1
+    next
+  }
+  in_template && modified && /^}/ && in_libegl_template {
+    in_template = 0
+    in_libegl_template = 0
+    modified = 0
+  }
+  { print }
+' BUILD.gn > BUILD.gn.tmp && mv BUILD.gn.tmp BUILD.gn
+
+# For angle_shared_library("libGLESv1_CM"): add install_name ldflags after configs += block
+awk '
+  /angle_shared_library\("libGLESv1_CM"\)/ {
+    in_target = 1
+  }
+  in_target && /configs \+= \[/ {
+    in_configs = 1
+  }
+  in_target && in_configs && /\]/ {
+    in_configs = 0
+    # After configs += [...] closes, add our ldflags
+    print $0
+    print "  if (is_apple) {"
+    print "    ldflags = [ \"-Wl,-install_name,@rpath/libGLESv1_CM.dylib\" ]"
+    print "  }"
+    modified = 1
+    next
+  }
+  in_target && modified && /^}/ {
+    in_target = 0
+    modified = 0
+  }
+  { print }
+' BUILD.gn > BUILD.gn.tmp && mv BUILD.gn.tmp BUILD.gn
+
+echo "@rpath install_name added to all library targets" >&2
 
 cd ..
 
