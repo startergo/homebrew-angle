@@ -178,7 +178,6 @@ jobs:
       SOURCE_VERSION: 1.0.0
       ANGLE_COMMIT: ${{ needs.determine-version.outputs.angle_commit }}
       GITHUB_WORKFLOW: "1"
-      TMPDIR: ${{ runner.temp }}
     steps:
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@master
