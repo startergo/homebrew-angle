@@ -125,12 +125,10 @@ done
 git -C angle checkout --force FETCH_HEAD || exit 1
 
 # Apply ANGLE bug fix patches
-# Use PATCH_DIR from environment if set, otherwise use default relative to build.sh
-PATCH_DIR="${PATCH_DIR:-$(dirname "$0")/patches}"
+PATCH_DIR="$(dirname "$0")/patches"
 
 # Create a log file that survives even if output is suppressed
-# Use $TMPDIR for temp files (mapped to $RUNNER_TEMP in GitHub Actions)
-PATCH_LOG="${TMPDIR:-/tmp}/angle-patch-status.txt"
+PATCH_LOG="/tmp/angle-patch-status.txt"
 echo "=== ANGLE PATCH APPLICATION LOG ===" > "$PATCH_LOG"
 echo "Looking for patches in: $PATCH_DIR" >> "$PATCH_LOG"
 
@@ -150,8 +148,8 @@ if [ -f "$PATCH_DIR/angle-changes-main.patch" ]; then
   echo "=== PATCH FILE FOUND! Applying... ===" >&2
   echo "PATCH FILE FOUND! Applying..." >> "$PATCH_LOG"
   echo "=== Patch file: $PATCH_DIR/angle-changes-main.patch ===" >&2
-  if git -C angle apply --check "$PATCH_DIR/angle-changes-main.patch" 2>/dev/null; then
-    git -C angle apply "$PATCH_DIR/angle-changes-main.patch" || {
+  if git -C angle apply --check ../patches/angle-changes-main.patch 2>/dev/null; then
+    git -C angle apply ../patches/angle-changes-main.patch || {
       echo "=== ERROR: Failed to apply patches ===" >&2
       echo "ERROR: Failed to apply patches" >> "$PATCH_LOG"
       exit 1
@@ -437,16 +435,14 @@ echo "=== Using clang revision: ${CLANG_REVISION}-${CLANG_SUB_REVISION} ===" >&2
 # Create stub clang runtime library (build references libclang_rt.osx.a)
 mkdir -p third_party/llvm-build/Release+Asserts/lib/clang/22/lib/darwin
 echo "=== Creating stub clang runtime library ===" >&2
-STUB_DIR="$PWD/build_stubs"
-mkdir -p "$STUB_DIR"
-cat > "$STUB_DIR/stub_clang_rt.c" << 'EOF'
+cat > /tmp/stub_clang_rt.c << 'EOF'
 void __clang_runtime_init(void) {}
 EOF
 # Use Xcode clang for compilation, Homebrew llvm-ar for archiving
-xcrun clang -c "$STUB_DIR/stub_clang_rt.c" -o "$STUB_DIR/stub_clang_rt.o" || clang -c "$STUB_DIR/stub_clang_rt.c" -o "$STUB_DIR/stub_clang_rt.o"
-/opt/homebrew/opt/llvm/bin/llvm-ar rcs third_party/llvm-build/Release+Asserts/lib/clang/22/lib/darwin/libclang_rt.osx.a "$STUB_DIR/stub_clang_rt.o" 2>/dev/null || \
-libtool -static -o third_party/llvm-build/Release+Asserts/lib/clang/22/lib/darwin/libclang_rt.osx.a "$STUB_DIR/stub_clang_rt.o"
-rm -rf "$STUB_DIR"
+xcrun clang -c /tmp/stub_clang_rt.c -o /tmp/stub_clang_rt.o || clang -c /tmp/stub_clang_rt.c -o /tmp/stub_clang_rt.o
+/opt/homebrew/opt/llvm/bin/llvm-ar rcs third_party/llvm-build/Release+Asserts/lib/clang/22/lib/darwin/libclang_rt.osx.a /tmp/stub_clang_rt.o 2>/dev/null || \
+libtool -static -o third_party/llvm-build/Release+Asserts/lib/clang/22/lib/darwin/libclang_rt.osx.a /tmp/stub_clang_rt.o
+rm -f /tmp/stub_clang_rt.c /tmp/stub_clang_rt.o
 
 # Set up build tools: Xcode clang for compiling, Homebrew LLVM for other tools
 mkdir -p third_party/llvm-build/Release+Asserts/bin
@@ -586,9 +582,8 @@ EOF
 
 echo "=== Injecting @rpath install_name config into BUILD.gn ===" >&2
 
-# Create temp file with GN config blocks (use $TMPDIR for GitHub Actions)
-CONFIG_FILE="${TMPDIR:-/tmp}/angle_build_config.txt"
-cat > "$CONFIG_FILE" << 'EOF'
+# Create temp file with GN config blocks
+cat > /tmp/angle_build_config.txt << 'EOF'
 config("homebrew_bottle_config_libEGL") {
   if (is_mac) {
     ldflags = [ "-Wl,-install_name,@rpath/libEGL.dylib" ]
@@ -607,150 +602,35 @@ config("homebrew_bottle_config_libGLESv1_CM") {
 EOF
 
 # Use awk to insert config before shared_library_public_config in BUILD.gn
-echo "=== Injecting homebrew configs into BUILD.gn ===" >&2
-echo "Working directory: $(pwd)" >&2
-echo "BUILD.gn exists: $(test -f BUILD.gn && echo YES || echo NO)" >&2
-echo "Config file: $CONFIG_FILE" >&2
-if [ ! -f BUILD.gn ]; then
-  echo "ERROR: BUILD.gn not found!" >&2
-  exit 1
-fi
-
-awk -v config_file="$CONFIG_FILE" '
+awk '
   /config\("shared_library_public_config"\)/ {
-    print "Found shared_library_public_config at line " NR > "/dev/stderr"
-    while ((getline line < config_file) > 0) {
+    while ((getline line < "/tmp/angle_build_config.txt") > 0) {
       print line
     }
-    close(config_file)
+    close("/tmp/angle_build_config.txt")
     print ""
   }
   { print }
 ' BUILD.gn > BUILD.gn.tmp && mv BUILD.gn.tmp BUILD.gn
-
-if [ $? -ne 0 ]; then
-  echo "ERROR: awk injection command failed with exit code $?" >&2
-  exit 1
-fi
-
-rm -f "$CONFIG_FILE"
-echo "Config injection awk completed" >&2
-
-# Verify the config was actually injected
-if ! grep -q "homebrew_bottle_config_libEGL" BUILD.gn; then
-  echo "ERROR: homebrew_bottle_config_libEGL was NOT injected into BUILD.gn!" >&2
-  echo "This indicates the config injection step failed." >&2
-  echo "Please check if config(\"shared_library_public_config\") exists in BUILD.gn" >&2
-  exit 1
-fi
+rm -f /tmp/angle_build_config.txt
 echo "Config injected into BUILD.gn" >&2
 
-# Modify templates to forward configs from invoker, then add configs to invocations
-
-# 1. Modify libEGL_shared_template to forward configs to libEGL_template
-awk '
-  /template\("libEGL_shared_template"\)/ { in_template = 1 }
-  in_template && /libEGL_template\(target_name\) \{/ { in_call = 1 }
-  in_call && !forward_added && /\{/ {
-    print $0
-    print "    if (defined(invoker.configs)) {"
-    print "      configs += invoker.configs"
-    print "    }"
-    forward_added = 1
-    next
-  }
-  in_template && /^\}/ && in_template_body {
-    in_template = 0
-    in_template_body = 0
-  }
-  in_template && /\{/ && !in_call {
-    in_template_body = 1
-  }
-  in_call && /\{/ {
-    in_call = 0
-  }
-  { print }
-' BUILD.gn > BUILD.gn.tmp && mv BUILD.gn.tmp BUILD.gn
-echo "Modified libEGL_shared_template to forward configs" >&2
-
-# 2. Modify angle_libGLESv2 template to forward configs
-awk '
-  /template\("angle_libGLESv2"\)/ { in_template = 1 }
-  in_template && /angle_shared_library\(target_name\) \{/ { in_call = 1 }
-  in_call && !configs_added && /\{/ {
-    print $0
-    print "    if (defined(invoker.configs)) {"
-    print "      configs += invoker.configs"
-    print "    }"
-    configs_added = 1
-    next
-  }
-  in_template && /^\}/ && in_template_body {
-    in_template = 0
-    in_template_body = 0
-  }
-  in_template && /\{/ && !in_call {
-    in_template_body = 1
-  }
-  in_call && /\{/ {
-    in_call = 0
-  }
-  { print }
-' BUILD.gn > BUILD.gn.tmp && mv BUILD.gn.tmp BUILD.gn
-echo "Modified angle_libGLESv2 template to forward configs" >&2
-
-# 3. Add configs to library target invocations
-AWK_SCRIPT="${TMPDIR:-/tmp}/angle_add_config.awk"
+# Add each install_name config to its respective library target in BUILD.gn
 for lib in EGL GLESv2 GLESv1_CM; do
-  # Set target name for this library
-  case "$lib" in
-    EGL)
-      target='libEGL_shared_template("libEGL")'
-      ;;
-    GLESv2)
-      target='angle_libGLESv2("libGLESv2")'
-      ;;
-    GLESv1_CM)
-      target='angle_shared_library("libGLESv1_CM")'
-      ;;
-  esac
-
-  cat > "$AWK_SCRIPT" << 'AWKEOF'
-    index(\$0, target) { in_target = 1 }
-    in_target && /\\{\$/ { in_target_body = 1 }
-    in_target && in_target_body && /configs/ && !in_configs && !target_modified {
-      in_configs = 1
-    }
-    in_configs && /^[[:space:]]*\]/ && !/\\[/ {
-      match(\$0, /^[[:space:]]*/)
-      indent = substr(\$0, RSTART, RLENGTH)
-      print \$0
-      print indent "configs += [ \":homebrew_bottle_config_lib" lib "\" ]"
-      target_modified = 1
-      in_configs = 0
-      next
-    }
-    # Fallback: if no configs found and we see first assignment, add configs before it
-    # Use configs += to avoid overwriting template's configs
-    in_target && in_target_body && !in_configs && !target_modified && /^[[:space:]]+[a-zA-Z_]/ {
-      match(\$0, /^[[:space:]]*/)
-      indent = substr(\$0, RSTART, RLENGTH)
-      print indent "configs += [ \":homebrew_bottle_config_lib" lib "\" ]"
-      print \$0
+  awk -v lib="$lib" '
+    /angle_shared_library\("lib'"$lib"'"\)/ { in_target = 1 }
+    in_target && /configs =/ && !target_modified {
+      print $0
+      print "    configs += [ \":homebrew_bottle_config_lib'"$lib"'\" ]"
       target_modified = 1
       next
     }
-    in_target && /^\\}/ {
+    in_target && /\}/ {
       in_target = 0
-      in_target_body = 0
-      in_configs = 0
     }
     { print }
-AWKEOF
-
-  awk -f "$AWK_SCRIPT" -v target="$target" -v lib="$lib" BUILD.gn > BUILD.gn.tmp && mv BUILD.gn.tmp BUILD.gn
+  ' BUILD.gn > BUILD.gn.tmp && mv BUILD.gn.tmp BUILD.gn
 done
-rm -f "$AWK_SCRIPT"
 echo "install_name configs added to library targets in BUILD.gn" >&2
 
 cd ..
@@ -826,7 +706,7 @@ if [ -n "$GITHUB_WORKFLOW" ]; then
     SHA256=$(shasum -a 256 "angle-${VERSION}.tar.gz" | awk '{print $1}')
     echo "SHA256: $SHA256"
     # Write to file for reliable capture (brew may suppress stdout, and GITHUB_ENV is not available in brew subprocess)
-    echo "$SHA256" > "${TMPDIR:-/tmp}/angle-source-sha256.txt"
-    echo "SHA256 written to ${TMPDIR:-/tmp}/angle-source-sha256.txt"
+    echo "$SHA256" > /tmp/angle-source-sha256.txt
+    echo "SHA256 written to /tmp/angle-source-sha256.txt"
   fi
 fi
