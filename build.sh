@@ -602,8 +602,17 @@ config("homebrew_bottle_config_libGLESv1_CM") {
 EOF
 
 # Use awk to insert config before shared_library_public_config in BUILD.gn
+echo "=== Injecting homebrew configs into BUILD.gn ===" >&2
+echo "Working directory: $(pwd)" >&2
+echo "BUILD.gn exists: $(test -f BUILD.gn && echo YES || echo NO)" >&2
+if [ ! -f BUILD.gn ]; then
+  echo "ERROR: BUILD.gn not found!" >&2
+  exit 1
+fi
+
 awk '
   /config\("shared_library_public_config"\)/ {
+    print "Found shared_library_public_config at line " NR > "/dev/stderr"
     while ((getline line < "/tmp/angle_build_config.txt") > 0) {
       print line
     }
@@ -612,7 +621,14 @@ awk '
   }
   { print }
 ' BUILD.gn > BUILD.gn.tmp && mv BUILD.gn.tmp BUILD.gn
+
+if [ $? -ne 0 ]; then
+  echo "ERROR: awk injection command failed with exit code $?" >&2
+  exit 1
+fi
+
 rm -f /tmp/angle_build_config.txt
+echo "Config injection awk completed" >&2
 
 # Verify the config was actually injected
 if ! grep -q "homebrew_bottle_config_libEGL" BUILD.gn; then
