@@ -125,7 +125,8 @@ done
 git -C angle checkout --force FETCH_HEAD || exit 1
 
 # Apply ANGLE bug fix patches
-PATCH_DIR="$(dirname "$0")/patches"
+# Use PATCH_DIR from environment if set, otherwise use default relative to build.sh
+PATCH_DIR="${PATCH_DIR:-$(dirname "$0")/patches}"
 
 # Create a log file that survives even if output is suppressed
 # Use $TMPDIR for temp files (mapped to $RUNNER_TEMP in GitHub Actions)
