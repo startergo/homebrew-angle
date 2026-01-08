@@ -613,6 +613,14 @@ awk '
   { print }
 ' BUILD.gn > BUILD.gn.tmp && mv BUILD.gn.tmp BUILD.gn
 rm -f /tmp/angle_build_config.txt
+
+# Verify the config was actually injected
+if ! grep -q "homebrew_bottle_config_libEGL" BUILD.gn; then
+  echo "ERROR: homebrew_bottle_config_libEGL was NOT injected into BUILD.gn!" >&2
+  echo "This indicates the config injection step failed." >&2
+  echo "Please check if config(\"shared_library_public_config\") exists in BUILD.gn" >&2
+  exit 1
+fi
 echo "Config injected into BUILD.gn" >&2
 
 # Modify templates to forward configs from invoker, then add configs to invocations
