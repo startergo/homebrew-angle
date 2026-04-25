@@ -301,9 +301,17 @@ if [ ! -d third_party/glslang/src/.git ]; then
 fi
 
 echo "=== Downloading astc-encoder ===" >&2
-if [ ! -d third_party/astc-encoder/src/Source ]; then
+if [ ! -d third_party/astc-encoder/src/.git ]; then
   mkdir -p third_party/astc-encoder
-  git clone --depth=1 https://github.com/ARM-software/astc-encoder.git third_party/astc-encoder/src || exit 1
+  git clone https://github.com/ARM-software/astc-encoder.git third_party/astc-encoder/src || exit 1
+fi
+# Get the astc-encoder commit that ANGLE expects (from DEPS file)
+ASTC_COMMIT=$(curl -s "https://chromium.googlesource.com/angle/angle/+/refs/heads/main/DEPS?format=TEXT" | base64 -d | grep -A1 "astc-encoder" | grep -oE "@[a-f0-9]{40}" | cut -c2-)
+if [ -z "$ASTC_COMMIT" ]; then
+  echo "Warning: Could not fetch astc-encoder commit from ANGLE DEPS, using current HEAD"
+else
+  echo "Checking out astc-encoder commit: $ASTC_COMMIT"
+  git -C third_party/astc-encoder/src checkout "$ASTC_COMMIT" || exit 1
 fi
 
 echo "=== Downloading vulkan-loader ===" >&2
