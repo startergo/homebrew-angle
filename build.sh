@@ -687,7 +687,7 @@ export RANLIB=llvm-ranlib
 gn gen out/"$ARCH" --args="target_cpu=\"$ARCH\" angle_build_all=false is_debug=false angle_has_frame_capture=false angle_enable_gl=false angle_enable_vulkan=true angle_enable_swiftshader=false angle_enable_wgpu=false angle_enable_metal=true angle_enable_null=false angle_enable_abseil=false use_siso=false install_prefix=\"../angle-$ARCH\" use_system_xcode=true use_custom_libcxx=false use_lld=false" || exit 1
 
 # Detect the clang resource dir version from generated build files
-CLANG_LIB_VERSION=$(grep -roE 'lib/clang/[0-9]+' out/"$ARCH"/ 2>/dev/null | head -1 | grep -oE '[0-9]+')
+CLANG_LIB_VERSION=$(grep -roE 'lib/clang/[0-9]+' out/"$ARCH"/ 2>/dev/null | head -1 | sed 's/.*lib\/clang\/\([0-9]*\).*/\1/')
 if [ -z "$CLANG_LIB_VERSION" ]; then
     echo "WARNING: Could not detect clang lib version from build files, falling back to 22" >&2
     CLANG_LIB_VERSION=22
