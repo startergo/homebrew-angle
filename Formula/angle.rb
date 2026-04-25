@@ -11,7 +11,7 @@ class Angle < Formula
   depends_on "llvm" => :build
   version "1.0.15"
   url "https://github.com/startergo/homebrew-angle/archive/refs/tags/v1.0.15.tar.gz"
-  sha256 "9e8a43e4f46d04c6c4232ec017130ce84549e827ddeceaa8be3a61eb8cdf62ae"
+  sha256 "e2734ded2c1c346d8f6faebcb2130979b740e94800aff485af5e5691ede8d392"
   license "BSD-2-Clause"
 
   head "https://chromium.googlesource.com/angle/angle",
