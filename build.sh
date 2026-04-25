@@ -432,17 +432,8 @@ CLANG_SUB_REVISION=$(grep -oE "CLANG_SUB_REVISION = [0-9]+" tools/clang/scripts/
 echo "${CLANG_REVISION}-${CLANG_SUB_REVISION}" > third_party/llvm-build/Release+Asserts/cr_build_revision || exit 1
 echo "=== Using clang revision: ${CLANG_REVISION}-${CLANG_SUB_REVISION} ===" >&2
 
-# Create stub clang runtime library (build references libclang_rt.osx.a)
-mkdir -p third_party/llvm-build/Release+Asserts/lib/clang/22/lib/darwin
-echo "=== Creating stub clang runtime library ===" >&2
-cat > /tmp/stub_clang_rt.c << 'EOF'
-void __clang_runtime_init(void) {}
-EOF
-# Use Xcode clang for compilation, Homebrew llvm-ar for archiving
-xcrun clang -c /tmp/stub_clang_rt.c -o /tmp/stub_clang_rt.o || clang -c /tmp/stub_clang_rt.c -o /tmp/stub_clang_rt.o
-/opt/homebrew/opt/llvm/bin/llvm-ar rcs third_party/llvm-build/Release+Asserts/lib/clang/22/lib/darwin/libclang_rt.osx.a /tmp/stub_clang_rt.o 2>/dev/null || \
-libtool -static -o third_party/llvm-build/Release+Asserts/lib/clang/22/lib/darwin/libclang_rt.osx.a /tmp/stub_clang_rt.o
-rm -f /tmp/stub_clang_rt.c /tmp/stub_clang_rt.o
+# Note: stub clang runtime library is created after gn gen
+# (we need to detect the expected clang version from generated build files)
 
 # Set up build tools: Xcode clang for compiling, Homebrew LLVM for other tools
 mkdir -p third_party/llvm-build/Release+Asserts/bin
@@ -694,6 +685,26 @@ export RANLIB=llvm-ranlib
 
 # gn gen (target_cpu: x64 or arm64)
 gn gen out/"$ARCH" --args="target_cpu=\"$ARCH\" angle_build_all=false is_debug=false angle_has_frame_capture=false angle_enable_gl=false angle_enable_vulkan=true angle_enable_swiftshader=false angle_enable_wgpu=false angle_enable_metal=true angle_enable_null=false angle_enable_abseil=false use_siso=false install_prefix=\"../angle-$ARCH\" use_system_xcode=true use_custom_libcxx=false use_lld=false" || exit 1
+
+# Detect the clang resource dir version from generated build files
+CLANG_LIB_VERSION=$(grep -oE 'lib/clang/[0-9]+/' out/"$ARCH"/build.ninja 2>/dev/null | head -1 | grep -oE '[0-9]+' | head -1)
+if [ -z "$CLANG_LIB_VERSION" ]; then
+    CLANG_LIB_VERSION=$(xcrun clang --print-resource-dir 2>/dev/null | sed 's|.*/clang/||' | cut -d/ -f1)
+fi
+if [ -z "$CLANG_LIB_VERSION" ]; then
+    echo "WARNING: Could not detect clang lib version, falling back to 22" >&2
+    CLANG_LIB_VERSION=22
+fi
+echo "=== Creating stub clang runtime library at version $CLANG_LIB_VERSION ===" >&2
+mkdir -p "third_party/llvm-build/Release+Asserts/lib/clang/${CLANG_LIB_VERSION}/lib/darwin"
+cat > /tmp/stub_clang_rt.c << 'EOF'
+void __clang_runtime_init(void) {}
+EOF
+xcrun clang -c /tmp/stub_clang_rt.c -o /tmp/stub_clang_rt.o || clang -c /tmp/stub_clang_rt.c -o /tmp/stub_clang_rt.o
+/opt/homebrew/opt/llvm/bin/llvm-ar rcs "third_party/llvm-build/Release+Asserts/lib/clang/${CLANG_LIB_VERSION}/lib/darwin/libclang_rt.osx.a" /tmp/stub_clang_rt.o 2>/dev/null || \
+libtool -static -o "third_party/llvm-build/Release+Asserts/lib/clang/${CLANG_LIB_VERSION}/lib/darwin/libclang_rt.osx.a" /tmp/stub_clang_rt.o
+rm -f /tmp/stub_clang_rt.c /tmp/stub_clang_rt.o
+
 # Use copied ninja directly from buildtools with limited parallelism to avoid memory issues
 "$(pwd)/buildtools/mac/ninja/ninja" -j 4 -C out/"$ARCH" libEGL libGLESv2 libGLESv1_CM install_angle || exit 1
 
