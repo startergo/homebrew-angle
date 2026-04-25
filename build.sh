@@ -443,20 +443,17 @@ echo "=== Setting up build tools ===" >&2
 # Also filter out Chromium clang plugin flags (require hermetic toolchain plugins)
 cat > third_party/llvm-build/Release+Asserts/bin/clang <<'EOF'
 #!/bin/sh
-# Filter out clang plugin flags - they require Chromium's hermetic toolchain
+# Filter out flags not supported by Apple Clang
 args=""
 skip_next=false
 for arg in "$@"; do
   if [ "$skip_next" = true ]; then
-    # This arg was preceded by -Xclang, check if it's plugin-related
     case "$arg" in
       -add-plugin|-plugin-arg-*|find-bad-constructs|raw-ptr-plugin|check-stack-allocated|check-raw-ptr-to-stack-allocated|disable-check-raw-ptr-to-stack-allocated-error|raw-ptr-exclude-path=*)
-        # Skip this arg too
         skip_next=false
         continue
         ;;
       *)
-        # Not plugin-related, keep the -Xclang and this arg
         args="$args -Xclang $arg"
         skip_next=false
         ;;
@@ -465,6 +462,12 @@ for arg in "$@"; do
     case "$arg" in
       -Xclang)
         skip_next=true
+        ;;
+      -fdiagnostics-show-inlining-chain|-fno-lifetime-dse)
+        continue
+        ;;
+      -fsanitize-ignore-for-ubsan-feature=*)
+        continue
         ;;
       *)
         args="$args $arg"
@@ -476,20 +479,17 @@ exec "$(xcrun -f clang)" $args
 EOF
 cat > third_party/llvm-build/Release+Asserts/bin/clang++ <<'EOF'
 #!/bin/sh
-# Filter out clang plugin flags - they require Chromium's hermetic toolchain
+# Filter out flags not supported by Apple Clang
 args=""
 skip_next=false
 for arg in "$@"; do
   if [ "$skip_next" = true ]; then
-    # This arg was preceded by -Xclang, check if it's plugin-related
     case "$arg" in
       -add-plugin|-plugin-arg-*|find-bad-constructs|raw-ptr-plugin|check-stack-allocated|check-raw-ptr-to-stack-allocated|disable-check-raw-ptr-to-stack-allocated-error|raw-ptr-exclude-path=*)
-        # Skip this arg too
         skip_next=false
         continue
         ;;
       *)
-        # Not plugin-related, keep the -Xclang and this arg
         args="$args -Xclang $arg"
         skip_next=false
         ;;
@@ -498,6 +498,12 @@ for arg in "$@"; do
     case "$arg" in
       -Xclang)
         skip_next=true
+        ;;
+      -fdiagnostics-show-inlining-chain|-fno-lifetime-dse)
+        continue
+        ;;
+      -fsanitize-ignore-for-ubsan-feature=*)
+        continue
         ;;
       *)
         args="$args $arg"
