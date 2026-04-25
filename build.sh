@@ -463,7 +463,7 @@ for arg in "$@"; do
       -Xclang)
         skip_next=true
         ;;
-      -fdiagnostics-show-inlining-chain|-fno-lifetime-dse)
+      -fdiagnostics-show-inlining-chain|-fno-lifetime-dse|-fno-objc-constant-literals)
         continue
         ;;
       -fsanitize-ignore-for-ubsan-feature=*)
@@ -499,7 +499,7 @@ for arg in "$@"; do
       -Xclang)
         skip_next=true
         ;;
-      -fdiagnostics-show-inlining-chain|-fno-lifetime-dse)
+      -fdiagnostics-show-inlining-chain|-fno-lifetime-dse|-fno-objc-constant-literals)
         continue
         ;;
       -fsanitize-ignore-for-ubsan-feature=*)
