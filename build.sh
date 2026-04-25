@@ -448,14 +448,17 @@ args=""
 skip_next=false
 for arg in "$@"; do
   if [ "$skip_next" = true ]; then
+    skip_next=false
     case "$arg" in
-      -add-plugin|-plugin-arg-*|find-bad-constructs|raw-ptr-plugin|check-stack-allocated|check-raw-ptr-to-stack-allocated|disable-check-raw-ptr-to-stack-allocated-error|raw-ptr-exclude-path=*)
-        skip_next=false
+      -add-plugin|-plugin-arg-*)
         continue
         ;;
-      *)
+      -*)
         args="$args -Xclang $arg"
-        skip_next=false
+        ;;
+      *)
+        # Plugin name/arg value (doesn't start with -), skip
+        continue
         ;;
     esac
   else
@@ -484,14 +487,17 @@ args=""
 skip_next=false
 for arg in "$@"; do
   if [ "$skip_next" = true ]; then
+    skip_next=false
     case "$arg" in
-      -add-plugin|-plugin-arg-*|find-bad-constructs|raw-ptr-plugin|check-stack-allocated|check-raw-ptr-to-stack-allocated|disable-check-raw-ptr-to-stack-allocated-error|raw-ptr-exclude-path=*)
-        skip_next=false
+      -add-plugin|-plugin-arg-*)
         continue
         ;;
-      *)
+      -*)
         args="$args -Xclang $arg"
-        skip_next=false
+        ;;
+      *)
+        # Plugin name/arg value (doesn't start with -), skip
+        continue
         ;;
     esac
   else
