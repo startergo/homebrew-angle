@@ -475,7 +475,7 @@ for arg in "$@"; do
     esac
   fi
 done
-exec "$(xcrun -f clang)" $args
+exec "$(xcrun -f clang)" -Wno-unknown-warning-option $args
 EOF
 cat > third_party/llvm-build/Release+Asserts/bin/clang++ <<'EOF'
 #!/bin/sh
@@ -511,7 +511,7 @@ for arg in "$@"; do
     esac
   fi
 done
-exec "$(xcrun -f clang++)" $args
+exec "$(xcrun -f clang++)" -Wno-unknown-warning-option $args
 EOF
 chmod +x third_party/llvm-build/Release+Asserts/bin/clang third_party/llvm-build/Release+Asserts/bin/clang++
 # Use symlinks for Homebrew LLVM tools (ar, nm, strip, etc.)
