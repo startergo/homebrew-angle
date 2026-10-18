@@ -60,10 +60,10 @@ jobs:
       ANGLE_COMMIT: ${{ needs.determine-version.outputs.angle_commit }}
     steps:
       - name: Set up Homebrew
-        uses: Homebrew/actions/setup-homebrew@master
+        uses: Homebrew/actions/setup-homebrew@main
 
       - name: Set up Git
-        uses: Homebrew/actions/git-user-config@master
+        uses: Homebrew/actions/git-user-config@main
         with:
           username: "startergo"
 
