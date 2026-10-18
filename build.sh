@@ -703,6 +703,19 @@ export CXX=$(xcrun -f clang++)
 export AR=llvm-ar
 export RANLIB=llvm-ranlib
 
+# Chromium's build now runs all exec_script() calls through a vendored CPython
+# (//third_party/cpython3/host/bin/python3), fetched via CIPD by gclient sync.
+# We clone deps manually instead, so provide that interpreter ourselves by
+# symlinking the python3 this build already uses. Without it gn gen dies with
+# "Returned 127" in build/config/apple/sdk_info.py.
+CPYTHON3_BIN="third_party/cpython3/host/bin/python3"
+if [ ! -x "$CPYTHON3_BIN" ]; then
+  PYTHON3_PATH=$(command -v python3) || { echo "Error: python3 not found for cpython3 shim" >&2; exit 1; }
+  mkdir -p third_party/cpython3/host/bin
+  ln -sf "$PYTHON3_PATH" "$CPYTHON3_BIN"
+  echo "Symlinked $CPYTHON3_BIN -> $PYTHON3_PATH" >&2
+fi
+
 # gn gen (target_cpu: x64 or arm64)
 gn gen out/"$ARCH" --args="target_cpu=\"$ARCH\" angle_build_all=false is_debug=false angle_has_frame_capture=false angle_enable_gl=false angle_enable_vulkan=true angle_enable_swiftshader=false angle_enable_wgpu=false angle_enable_metal=true angle_enable_null=false angle_enable_abseil=false use_siso=false install_prefix=\"../angle-$ARCH\" use_system_xcode=true use_custom_libcxx=false use_lld=false" || exit 1
 
