@@ -573,3 +573,14 @@ jobs:
           git add Formula/angle.rb
           git commit --amend --no-edit
           git push -f origin master
+
+      - name: Upload brew build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: brew-angle-logs
+          path: |
+            /Users/runner/Library/Logs/Homebrew/angle/
+            /tmp/angle-patch-status.txt
+            /tmp/angle-rpath-verify.txt
+          if-no-files-found: ignore
