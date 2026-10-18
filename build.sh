@@ -699,6 +699,16 @@ CLEAN_PATH=$(echo "$PATH" | tr ':' '\n' | grep -v "Homebrew/shims" | tr '\n' ':'
 # malformed file / unknown architecture"). With SDKROOT unset, gn's
 # sdk_info.py symlinks the Xcode SDK, matching the toolchain.
 unset SDKROOT
+# Additionally pin DEVELOPER_DIR to the full Xcode so xcrun, sdk_info.py and
+# the linker all resolve the same toolchain (runners can otherwise resolve
+# the CommandLineTools SDK for -isysroot while linking with Xcode's ld).
+if [ -z "$DEVELOPER_DIR" ] || [[ "$DEVELOPER_DIR" == *CommandLineTools* ]]; then
+  XCODE_APP=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
+  if [ -n "$XCODE_APP" ]; then
+    export DEVELOPER_DIR="$XCODE_APP/Contents/Developer"
+    echo "Pinned DEVELOPER_DIR=$DEVELOPER_DIR" >&2
+  fi
+fi
 # Add llvm-build bin to PATH (contains Xcode clang + Homebrew LLVM tools)
 export PATH="$(pwd)/third_party/llvm-build/Release+Asserts/bin:$(pwd)/buildtools/mac/gn:$(pwd)/buildtools/mac/ninja:$CLEAN_PATH"
 
