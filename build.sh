@@ -732,6 +732,15 @@ if [ ! -x "$CPYTHON3_BIN" ]; then
   echo "Symlinked $CPYTHON3_BIN -> $PYTHON3_PATH" >&2
 fi
 
+# Diagnostics: show how Apple tools resolve in this environment
+echo "=== Apple toolchain resolution ===" >&2
+echo "DEVELOPER_DIR=${DEVELOPER_DIR:-<unset>}" >&2
+echo "SDKROOT=${SDKROOT:-<unset>}" >&2
+echo "xcode-select -p: $(xcode-select -print-path 2>&1)" >&2
+echo "xcrun sdk: $(xcrun -sdk macosx --show-sdk-path 2>&1)" >&2
+ls -d /Applications/Xcode*.app >&2 2>/dev/null || true
+echo "==================================" >&2
+
 # gn gen (target_cpu: x64 or arm64)
 gn gen out/"$ARCH" --args="target_cpu=\"$ARCH\" angle_build_all=false is_debug=false angle_has_frame_capture=false angle_enable_gl=false angle_enable_vulkan=true angle_enable_swiftshader=false angle_enable_wgpu=false angle_enable_metal=true angle_enable_null=false angle_enable_abseil=false use_siso=false install_prefix=\"../angle-$ARCH\" use_system_xcode=true use_custom_libcxx=false use_lld=false rust_force_head_revision=true angle_enable_perfetto=false treat_warnings_as_errors=false" || exit 1
 
@@ -752,6 +761,23 @@ libtool -static -o "third_party/llvm-build/Release+Asserts/lib/clang/${CLANG_LIB
 rm -f /tmp/stub_clang_rt.c /tmp/stub_clang_rt.o
 
 # Use copied ninja directly from buildtools with limited parallelism to avoid memory issues
+# Force the xcode_links symlinks (used as -isysroot by every link step) at
+# the pinned Xcode, bypassing whatever xcrun resolved during gn gen. On CI,
+# xcrun has been observed to return the CommandLineTools MacOSX27.0 SDK even
+# with DEVELOPER_DIR pinned and SDKROOT unset; linking that SDK with Xcode's
+# ld fails with "tapi error: malformed file / unknown architecture".
+if [ -n "$DEVELOPER_DIR" ] && [ -d "$DEVELOPER_DIR/Platforms/MacOSX.platform" ]; then
+  XCODE_PLATFORM_DIR="$DEVELOPER_DIR/Platforms/MacOSX.platform"
+  XCODE_SDK_DIR=$(ls -d "$XCODE_PLATFORM_DIR/Developer/SDKs/MacOSX"*.sdk 2>/dev/null | sort -V | tail -1)
+  if [ -n "$XCODE_SDK_DIR" ]; then
+    mkdir -p out/"$ARCH"/sdk/xcode_links
+    ln -sfn "$XCODE_SDK_DIR" out/"$ARCH"/sdk/xcode_links/MacOSX.sdk
+    ln -sfn "$XCODE_PLATFORM_DIR" out/"$ARCH"/sdk/xcode_links/MacOSX.platform
+    ln -sfn "$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain" out/"$ARCH"/sdk/xcode_links/XcodeDefault.xctoolchain 2>/dev/null || true
+    echo "Forced sdk/xcode_links -> $XCODE_SDK_DIR" >&2
+  fi
+fi
+
 "$(pwd)/buildtools/mac/ninja/ninja" -j 4 -C out/"$ARCH" libEGL libGLESv2 libGLESv1_CM install_angle || exit 1
 
 cd ..
