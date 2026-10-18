@@ -11,6 +11,10 @@ ANGLE translates OpenGL ES API calls to native GPU APIs on Windows, macOS, and L
 ## Installation
 
 ```bash
+# Homebrew 6+ requires trusting non-official taps before use. Trust BEFORE
+# tapping (brew tap validates formulae at tap time).
+brew trust startergo/angle startergo/gn
+
 # Tap the repositories (the gn tap provides a build dependency)
 brew tap startergo/angle
 brew tap startergo/gn
