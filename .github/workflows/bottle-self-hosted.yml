@@ -70,6 +70,11 @@ jobs:
       - name: Checkout tap
         uses: actions/checkout@v4
 
+      - name: Install Metal Toolchain (Xcode 26+)
+        # Xcode 26 ships the Metal compiler as a downloadable component;
+        # ANGLE's metal shaders need it (xcrun metal). Idempotent.
+        run: xcodebuild -downloadComponent MetalToolchain
+
       - name: Download build scripts
         run: |
           curl -o build.sh https://raw.githubusercontent.com/startergo/build-angle/main/build.sh

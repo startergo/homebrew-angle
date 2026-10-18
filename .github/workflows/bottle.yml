@@ -207,6 +207,11 @@ jobs:
       - name: Checkout tap
         uses: actions/checkout@v4
 
+      - name: Install Metal Toolchain (Xcode 26+)
+        # Xcode 26 ships the Metal compiler as a downloadable component;
+        # ANGLE's metal shaders need it (xcrun metal)
+        run: xcodebuild -downloadComponent MetalToolchain
+
       - name: Show formula state before update
         run: |
           echo "=== Formula before ==="
