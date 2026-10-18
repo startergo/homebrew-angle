@@ -717,7 +717,7 @@ if [ ! -x "$CPYTHON3_BIN" ]; then
 fi
 
 # gn gen (target_cpu: x64 or arm64)
-gn gen out/"$ARCH" --args="target_cpu=\"$ARCH\" angle_build_all=false is_debug=false angle_has_frame_capture=false angle_enable_gl=false angle_enable_vulkan=true angle_enable_swiftshader=false angle_enable_wgpu=false angle_enable_metal=true angle_enable_null=false angle_enable_abseil=false use_siso=false install_prefix=\"../angle-$ARCH\" use_system_xcode=true use_custom_libcxx=false use_lld=false" || exit 1
+gn gen out/"$ARCH" --args="target_cpu=\"$ARCH\" angle_build_all=false is_debug=false angle_has_frame_capture=false angle_enable_gl=false angle_enable_vulkan=true angle_enable_swiftshader=false angle_enable_wgpu=false angle_enable_metal=true angle_enable_null=false angle_enable_abseil=false use_siso=false install_prefix=\"../angle-$ARCH\" use_system_xcode=true use_custom_libcxx=false use_lld=false rust_force_head_revision=true angle_enable_perfetto=false treat_warnings_as_errors=false" || exit 1
 
 # Detect the clang resource dir version from generated build files
 CLANG_LIB_VERSION=$(grep -roE 'lib/clang/[0-9]+' out/"$ARCH"/ 2>/dev/null | head -1 | sed 's/.*lib\/clang\/\([0-9]*\).*/\1/')
