@@ -693,6 +693,12 @@ cd angle
 
 # Set up clean PATH (remove Homebrew shims that cause fork issues)
 CLEAN_PATH=$(echo "$PATH" | tr ':' '\n' | grep -v "Homebrew/shims" | tr '\n' ':' | sed 's/:$//')
+# Drop Homebrew's SDKROOT (points at CommandLineTools' SDK): we compile and
+# link with the selected Xcode's clang/ld, and its ld cannot parse the newer
+# .tbd stubs in the CLT SDK (e.g. MacOSX27.0 vs Xcode 26.6 -> "tapi error:
+# malformed file / unknown architecture"). With SDKROOT unset, gn's
+# sdk_info.py symlinks the Xcode SDK, matching the toolchain.
+unset SDKROOT
 # Add llvm-build bin to PATH (contains Xcode clang + Homebrew LLVM tools)
 export PATH="$(pwd)/third_party/llvm-build/Release+Asserts/bin:$(pwd)/buildtools/mac/gn:$(pwd)/buildtools/mac/ninja:$CLEAN_PATH"
 
