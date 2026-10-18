@@ -11,12 +11,17 @@ ANGLE translates OpenGL ES API calls to native GPU APIs on Windows, macOS, and L
 ## Installation
 
 ```bash
-# Tap the repository
+# Tap the repositories (the gn tap provides a build dependency)
 brew tap startergo/angle
+brew tap startergo/gn
 
 # Install ANGLE
 brew install startergo/angle/angle
 ```
+
+> **Note:** Homebrew does not auto-tap third-party dependencies. The `gn` tap
+> is only needed when building from source (no bottle for your macOS
+> version); bottle installs don't require it.
 
 ## Usage
 
