@@ -43,6 +43,11 @@ jobs:
     steps:
       - name: Checkout tap
         uses: actions/checkout@v4
+        with:
+          # Full history + tags so `git describe --tags` can determine the
+          # next version (shallow checkouts have no tags and fall back to
+          # v1.0.0, which regressed the version to 1.0.1)
+          fetch-depth: 0
 
       - id: angle_commit
         run: |
